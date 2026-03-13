@@ -1,0 +1,44 @@
+capture:
+  interval_seconds: 5
+  diff_threshold: 0.05
+  screenshot_buffer_size: 20
+
+kakao:
+  window_title_pattern: "DeepLink"
+  bot_account_name: "딥링크 고객센터"
+  input_field_offset_y: -40
+
+analysis:
+  vision_model: "claude-opus-4-20250514"
+  text_model: "claude-sonnet-4-20250514"
+  max_history_messages: 10
+
+knowledge:
+  embedding_model: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+  chunk_size: 500
+  chunk_overlap: 50
+  search_results: 5
+  chromadb_path: "data/chromadb"
+
+safety:
+  rate_limit_per_10s: 1
+  rate_limit_per_hour: 20
+  max_consecutive_bot_replies: 5
+  escalation_keywords:
+    - "관리자"
+    - "불만"
+    - "환불"
+    - "사장님"
+    - "상담원"
+  kill_switch_hotkey: "ctrl+shift+q"
+
+learning:
+  enabled: true
+  validation_delay_minutes: 5
+  min_confidence: 0.7
+
+logging:
+  level: "INFO"
+  conversation_log_dir: "data/conversations"
+  screenshot_log_dir: "data/screenshots"
+  max_log_days: 30
