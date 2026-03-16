@@ -1,0 +1,270 @@
+/**
+ * Semantic search via LLM query expansion + keyword matching
+ *
+ * Instead of vector embeddings (ZenMux doesn't support embedding API),
+ * we use Claude to expand user queries into standard search terms,
+ * then combine with enhanced keyword matching against KB and QnA.
+ *
+ * Example: "린클 되나요?" → "리니지 클래식 리니지클래식 PC방 혜택 게임 이용 가능"
+ */
+
+const OpenAI = require('openai')
+const { KnowledgeBase } = require('../models/KnowledgeBase')
+const QnA = require('../models/QnA')
+
+const client = process.env.ZENMUX_API_KEY
+  ? new OpenAI({
+      baseURL: 'https://zenmux.ai/api/v1',
+      apiKey: process.env.ZENMUX_API_KEY,
+    })
+  : null
+
+const EXPAND_MODEL = process.env.ZENMUX_MODEL || 'anthropic/claude-sonnet-4.5'
+
+// In-memory cache
+let kbCache = []
+let qnaCache = []
+let initialized = false
+
+// Korean gaming abbreviation dictionary (fast local expansion)
+const ABBREV_MAP = {
+  '린클': '리니지 클래식 리니지클래식',
+  '리클': '리니지 클래식 리니지클래식',
+  '던파': '던전앤파이터 던전 파이터',
+  '로아': '로스트아크 로스트 아크',
+  '메이플': '메이플스토리 메이플 스토리',
+  '배그': '배틀그라운드 PUBG',
+  '발로': '발로란트 VALORANT',
+  '피방': 'PC방 피씨방',
+  '지방': 'PC방 피씨방 지피방',
+  '지피방': 'PC방 피씨방',
+  '2클': '2클라이언트 2클라 듀얼',
+  '2클라': '2클라이언트 듀얼',
+}
+
+/**
+ * Expand abbreviations locally (instant, no API call)
+ */
+function expandAbbreviations(text) {
+  if (!text) return text
+  let expanded = text
+  for (const [abbr, full] of Object.entries(ABBREV_MAP)) {
+    if (text.includes(abbr)) {
+      expanded += ' ' + full
+    }
+  }
+  return expanded
+}
+
+/**
+ * Use LLM to expand user query into search keywords (async, with timeout)
+ */
+async function expandQueryWithLLM(userMessage, language) {
+  if (!client || !userMessage || userMessage.length < 3) return null
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 5000) // 5s timeout
+
+  try {
+    const res = await client.chat.completions.create({
+      model: EXPAND_MODEL,
+      messages: [
+        {
+          role: 'system',
+          content: `You are a search query expander for DeepLink (remote PC bang GPU rental platform).
+Given a user's chat message, output ONLY a list of Korean search keywords (space-separated) that would help find relevant knowledge base articles.
+Rules:
+- Expand abbreviations: 린클→리니지 클래식, 던파→던전앤파이터, 2클→2클라이언트, 피방→PC방
+- Add related concepts: if asking about price, add 요금 포인트 충전; if about games, add PC방 혜택
+- Include the original words too
+- Output ONLY keywords, no explanation, no punctuation
+- Maximum 15 keywords`
+        },
+        { role: 'user', content: userMessage }
+      ],
+      max_tokens: 100,
+      temperature: 0,
+    }, { signal: controller.signal })
+
+    return res.choices?.[0]?.message?.content?.trim() || null
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+function cleanHtml(html) {
+  if (!html) return ''
+  return html.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ')
+    .replace(/&[a-z]+;/gi, ' ').replace(/\s+/g, ' ').trim()
+}
+
+function normalizeText(value) {
+  if (!value) return ''
+  return String(value).toLowerCase().replace(/[^\w\s가-힣一-龥]/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+/**
+ * Score a KB entry against expanded search terms
+ */
+function scoreKBEntry(entry, searchWords) {
+  let score = 0
+  const title = normalizeText(entry.title)
+  const content = normalizeText(cleanHtml(entry.contentHtml)).substring(0, 500)
+  const keywords = (entry.keywords || []).map(k => normalizeText(k))
+
+  for (const word of searchWords) {
+    if (word.length < 2) continue
+    if (title.includes(word)) score += 4      // title match = highest
+    for (const kw of keywords) {
+      if (kw.length < 2) continue             // skip single-char keywords
+      // Only match if both sides are meaningful length
+      if (kw === word) score += 3             // exact match = highest keyword score
+      else if (kw.length >= 3 && word.length >= 3 && (kw.includes(word) || word.includes(kw))) score += 2
+    }
+    if (content.includes(word)) score += 1    // content match
+  }
+  return score
+}
+
+/**
+ * Score a QnA entry against expanded search terms
+ */
+function scoreQnAEntry(qna, searchWords, lang) {
+  let score = 0
+  const question = normalizeText(qna.question?.[lang] || qna.question?.ko || '')
+  const answer = normalizeText(cleanHtml(qna.answer?.[lang] || qna.answer?.ko || ''))
+
+  for (const word of searchWords) {
+    if (word.length < 2) continue
+    if (question.includes(word)) score += 3
+    if (answer.includes(word)) score += 1
+  }
+  return score
+}
+
+/**
+ * Initialize in-memory cache on startup
+ */
+async function initEmbeddings() {
+  console.log('[SemanticSearch] loading KB and QnA into memory...')
+
+  const kbEntries = await KnowledgeBase.find({ isActive: true }).lean()
+  kbCache = kbEntries.map(e => ({
+    id: e._id.toString(),
+    title: e.title,
+    contentHtml: e.contentHtml,
+    keywords: e.keywords,
+    language: e.language,
+    isActive: e.isActive,
+  }))
+
+  const qnaEntries = await QnA.find({ isActive: true }).lean()
+  qnaCache = qnaEntries.map(e => ({
+    id: e._id.toString(),
+    question: e.question,
+    answer: e.answer,
+    isActive: e.isActive,
+  }))
+
+  initialized = true
+  console.log(`[SemanticSearch] ready: ${kbCache.length} KB, ${qnaCache.length} QnA`)
+}
+
+/**
+ * Combined semantic search: local abbreviation expansion + LLM query expansion + scoring
+ */
+async function semanticSearch(messageText, language, kbTopK = 5, qnaTopK = 5) {
+  if (!initialized || !messageText) return { kbResults: [], qnaResults: [] }
+
+  // Step 1: Local abbreviation expansion (instant)
+  const localExpanded = expandAbbreviations(messageText)
+
+  // Step 2: LLM query expansion (async, 3s timeout, non-blocking)
+  const llmExpanded = await expandQueryWithLLM(messageText, language)
+
+  // Combine all search terms
+  const allTerms = normalizeText(localExpanded + ' ' + (llmExpanded || ''))
+  const searchWords = [...new Set(allTerms.split(/\s+/).filter(w => w.length >= 2))]
+
+  if (searchWords.length === 0) return { kbResults: [], qnaResults: [] }
+
+  // Step 3: Score and rank KB entries (filter by language)
+  const langKb = kbCache.filter(e => e.language === language)
+  const kbScored = langKb
+    .map(e => ({ entry: e, score: scoreKBEntry(e, searchWords) }))
+    .filter(e => e.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, kbTopK)
+
+  const kbResults = kbScored.map(r => ({
+    title: r.entry.title,
+    contentHtml: r.entry.contentHtml,
+    keywords: r.entry.keywords,
+    score: r.score,
+  }))
+
+  // Async reference tracking (non-blocking)
+  if (kbScored.length > 0) {
+    const hitIds = kbScored.map(r => r.entry.id)
+    KnowledgeBase.updateMany(
+      { _id: { $in: hitIds } },
+      { $inc: { referenceCount: 1 }, $set: { lastReferencedAt: new Date() } }
+    ).catch(() => {})
+  }
+
+  // Step 4: Score and rank QnA entries
+  const qnaScored = qnaCache
+    .map(e => ({ entry: e, score: scoreQnAEntry(e, searchWords, language) }))
+    .filter(e => e.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, qnaTopK)
+
+  const qnaResults = qnaScored.map(r => ({
+    question: r.entry.question,
+    answer: r.entry.answer,
+    score: r.score,
+  }))
+
+  return { kbResults, qnaResults }
+}
+
+/**
+ * Refresh cache for a single KB entry (call after create/update)
+ */
+async function refreshKBEntry(entryId) {
+  const entry = await KnowledgeBase.findById(entryId).lean()
+  if (!entry || !entry.isActive) {
+    removeKBFromCache(entryId)
+    return
+  }
+
+  const cached = {
+    id: entryId.toString(),
+    title: entry.title,
+    contentHtml: entry.contentHtml,
+    keywords: entry.keywords,
+    language: entry.language,
+    isActive: entry.isActive,
+  }
+  const idx = kbCache.findIndex(e => e.id === entryId.toString())
+  if (idx >= 0) kbCache[idx] = cached
+  else kbCache.push(cached)
+}
+
+/**
+ * Remove KB entry from cache
+ */
+function removeKBFromCache(entryId) {
+  kbCache = kbCache.filter(e => e.id !== entryId.toString())
+}
+
+module.exports = {
+  semanticSearch,
+  initEmbeddings,
+  refreshKBEntry,
+  removeKBFromCache,
+  expandAbbreviations,
+  isReady: () => initialized,
+}
