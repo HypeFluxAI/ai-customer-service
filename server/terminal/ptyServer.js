@@ -319,7 +319,9 @@ function initTerminalWebSocket(server) {
     // Remove variables that could leak secrets to the child
     delete env.CHAT_ADMIN_TOKEN
     delete env.OPENAI_API_KEY
-    // Keep GEMINI_API_KEY so gemini CLI can authenticate
+    // Configure Gemini CLI to use our API proxy (Gemini→OpenAI→ZenMux/Claude)
+    env.GOOGLE_GEMINI_BASE_URL = env.GOOGLE_GEMINI_BASE_URL || 'http://localhost:3002'
+    env.GEMINI_API_KEY = env.GEMINI_API_KEY || 'proxy-mode'
     // Set a clear TERM
     env.TERM = 'xterm-256color'
     // Ensure Gemini CLI and Node 22 are on PATH (server may have them in user dirs)
