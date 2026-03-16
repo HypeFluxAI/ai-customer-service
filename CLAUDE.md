@@ -94,6 +94,7 @@ data/        数据目录（截图、对话日志、知识库）
 4. `@cs-trainer` → 启用专用训练 Agent
 
 ## 更新日志
+- 2026-03-16: 添加 Gemini CLI 架构图解文档 (docs/gemini-cli-architecture.md)
 - 2026-03-16: 集成 Gemini CLI (MCP Server + Skill + Subagent)
 - 2026-03-16: 添加交互式训练模式 (training/cli.py)
 - 2026-03-16: 创建 CLAUDE.md 项目规则文件
