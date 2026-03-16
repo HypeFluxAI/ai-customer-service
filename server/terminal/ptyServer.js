@@ -49,7 +49,17 @@ function loadNodePty() {
 function isGeminiAvailable() {
   try {
     const cmd = IS_WINDOWS ? 'where gemini' : 'which gemini'
-    execSync(cmd, { stdio: 'ignore' })
+    // Include user-local bin dirs in PATH for detection
+    const homeDir = process.env.HOME || process.env.USERPROFILE || ''
+    const extraPath = IS_WINDOWS ? '' : [
+      homeDir + '/node22/bin',
+      homeDir + '/.npm-global/bin',
+      homeDir + '/.local/bin',
+    ].join(':') + ':'
+    const env = Object.assign({}, process.env, {
+      PATH: extraPath + (process.env.PATH || ''),
+    })
+    execSync(cmd, { stdio: 'ignore', env })
     return true
   } catch {
     return false
@@ -312,6 +322,16 @@ function initTerminalWebSocket(server) {
     // Keep GEMINI_API_KEY so gemini CLI can authenticate
     // Set a clear TERM
     env.TERM = 'xterm-256color'
+    // Ensure Gemini CLI and Node 22 are on PATH (server may have them in user dirs)
+    const homeDir = env.HOME || env.USERPROFILE || ''
+    if (homeDir && !IS_WINDOWS) {
+      const extraPaths = [
+        homeDir + '/node22/bin',
+        homeDir + '/.npm-global/bin',
+        homeDir + '/.local/bin',
+      ].join(':')
+      env.PATH = extraPaths + ':' + (env.PATH || '')
+    }
 
     let ptyProcess
     try {
