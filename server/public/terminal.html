@@ -448,6 +448,15 @@
     connect();
   });
 
+  // Auto-login if token is passed via URL parameter (from admin dashboard iframe)
+  var urlParams = new URLSearchParams(window.location.search);
+  var urlToken = urlParams.get('token');
+  if (urlToken) {
+    token = urlToken;
+    tokenInput.value = token;
+    connect();
+  }
+
   // update session timer every second
   setInterval(updateStatusBar, 1000);
 })();

@@ -870,7 +870,7 @@ table.data-table .truncate {
     <!-- Tab 5: Terminal -->
     <div class="tab-pane" id="pane-terminal">
       <div class="terminal-iframe-wrap">
-        <iframe src="/terminal/terminal.html" id="terminal-iframe"></iframe>
+        <iframe id="terminal-iframe"></iframe>
       </div>
     </div>
   </div>
@@ -1567,6 +1567,9 @@ table.data-table .truncate {
       appEl.classList.remove('hidden');
       connDot.classList.add('ok');
       connText.textContent = t('connected');
+      // Terminal iframe: pass token via URL so it auto-authenticates
+      document.getElementById('terminal-iframe').src =
+        '/terminal/terminal.html?token=' + encodeURIComponent(token);
       loadDashboard();
     } catch (err) {
       if (err.message === 'unauthorized') {
