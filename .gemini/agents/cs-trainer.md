@@ -6,7 +6,7 @@ tools:
   - mcp_deeplink-mongo_*
   - read_file
   - write_file
-  - shell
+  - run_shell_command
 model: gemini-2.5-pro
 temperature: 0.3
 max_turns: 50

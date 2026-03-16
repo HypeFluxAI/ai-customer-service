@@ -867,11 +867,9 @@ table.data-table .truncate {
       </div>
     </div>
 
-    <!-- Tab 5: Terminal -->
+    <!-- Tab 5: Terminal (inline xterm.js, no iframe) -->
     <div class="tab-pane" id="pane-terminal">
-      <div class="terminal-iframe-wrap">
-        <iframe id="terminal-iframe"></iframe>
-      </div>
+      <div id="inline-term-container" style="width:100%;height:100%;"></div>
     </div>
   </div>
 </div>
@@ -1567,9 +1565,6 @@ table.data-table .truncate {
       appEl.classList.remove('hidden');
       connDot.classList.add('ok');
       connText.textContent = t('connected');
-      // Terminal iframe: pass token via URL so it auto-authenticates
-      document.getElementById('terminal-iframe').src =
-        '/terminal/terminal.html?token=' + encodeURIComponent(token);
       loadDashboard();
     } catch (err) {
       if (err.message === 'unauthorized') {
@@ -1625,6 +1620,10 @@ table.data-table .truncate {
       if (btn.dataset.tab === 'kb') loadKB();
       if (btn.dataset.tab === 'analytics') loadAnalytics();
       if (btn.dataset.tab === 'teach') loadTeachHistory();
+      // Initialize inline terminal when tab is first shown
+      if (btn.dataset.tab === 'terminal') {
+        initInlineTerminal();
+      }
     });
   });
 
@@ -2212,6 +2211,139 @@ table.data-table .truncate {
 
   // ── Initialize language on page load ──
   setLang(currentLang);
+
+  // ── Inline Terminal (xterm.js, no iframe) ──
+  var inlineTerm = null;
+  var inlineFitAddon = null;
+  var termWs = null;
+  var termInitialized = false;
+
+  function initInlineTerminal() {
+    if (termInitialized) {
+      // Re-fit on tab switch
+      if (inlineFitAddon) {
+        setTimeout(function() { inlineFitAddon.fit(); }, 50);
+      }
+      return;
+    }
+
+    // Load xterm.js dynamically
+    var link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://cdn.jsdelivr.net/npm/xterm@5/lib/xterm.min.css';
+    document.head.appendChild(link);
+
+    loadScript('https://cdn.jsdelivr.net/npm/xterm@5/lib/xterm.min.js', function() {
+      loadScript('https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js', function() {
+        createTerminal();
+      });
+    });
+  }
+
+  function loadScript(src, cb) {
+    var s = document.createElement('script');
+    s.src = src;
+    s.onload = cb;
+    document.head.appendChild(s);
+  }
+
+  function createTerminal() {
+    var container = document.getElementById('inline-term-container');
+    if (!container) return;
+
+    inlineTerm = new Terminal({
+      cursorBlink: true,
+      fontSize: 14,
+      fontFamily: "'JetBrains Mono', 'Cascadia Code', 'Menlo', 'Consolas', monospace",
+      theme: {
+        background: '#0f0f1a',
+        foreground: '#e0e0e0',
+        cursor: '#00d26a',
+        cursorAccent: '#0f0f1a',
+        selectionBackground: 'rgba(67,97,238,0.3)',
+      },
+      allowProposedApi: true,
+    });
+
+    inlineFitAddon = new FitAddon.FitAddon();
+    inlineTerm.loadAddon(inlineFitAddon);
+    inlineTerm.open(container);
+
+    // Wait for layout then fit
+    requestAnimationFrame(function() {
+      setTimeout(function() {
+        inlineFitAddon.fit();
+        connectTerminalWs();
+        termInitialized = true;
+      }, 100);
+    });
+
+    // Handle resize
+    window.addEventListener('resize', function() {
+      if (inlineFitAddon) inlineFitAddon.fit();
+    });
+
+    // Send input to WebSocket
+    inlineTerm.onData(function(data) {
+      if (termWs && termWs.readyState === WebSocket.OPEN) {
+        termWs.send(JSON.stringify({ type: 'input', data: data }));
+      }
+    });
+
+    inlineTerm.onResize(function(size) {
+      if (termWs && termWs.readyState === WebSocket.OPEN) {
+        termWs.send(JSON.stringify({ type: 'resize', cols: size.cols, rows: size.rows }));
+      }
+    });
+  }
+
+  function connectTerminalWs() {
+    if (termWs) { termWs.close(); termWs = null; }
+
+    var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    var url = proto + '//' + location.host + '/ws/terminal';
+    termWs = new WebSocket(url);
+
+    termWs.onopen = function() {
+      termWs.send(JSON.stringify({ type: 'auth', token: authToken }));
+    };
+
+    termWs.onmessage = function(evt) {
+      var msg;
+      try { msg = JSON.parse(evt.data); } catch(_) { return; }
+
+      if (msg.type === 'output' && inlineTerm) {
+        inlineTerm.write(msg.data);
+      } else if (msg.type === 'auth_success') {
+        inlineTerm.writeln('\r\n\x1b[32mConnected to training terminal.\x1b[0m\r\n');
+        // Send initial size
+        if (inlineFitAddon) inlineFitAddon.fit();
+        setTimeout(function() {
+          if (termWs && termWs.readyState === WebSocket.OPEN && inlineTerm) {
+            termWs.send(JSON.stringify({ type: 'resize', cols: inlineTerm.cols, rows: inlineTerm.rows }));
+          }
+          inlineTerm.focus();
+        }, 200);
+      } else if (msg.type === 'auth_failed') {
+        inlineTerm.writeln('\r\n\x1b[31mAuth failed: ' + (msg.message || '') + '\x1b[0m');
+      } else if (msg.type === 'error') {
+        inlineTerm.writeln('\r\n\x1b[31mError: ' + (msg.message || '') + '\x1b[0m');
+      }
+    };
+
+    termWs.onclose = function() {
+      if (inlineTerm) {
+        inlineTerm.writeln('\r\n\x1b[33mDisconnected. Click terminal tab again to reconnect.\x1b[0m');
+      }
+      termInitialized = false; // Allow reconnect on next tab click
+    };
+
+    termWs.onerror = function() {
+      if (inlineTerm) {
+        inlineTerm.writeln('\r\n\x1b[31mConnection error.\x1b[0m');
+      }
+    };
+  }
 
 })();
 </script>

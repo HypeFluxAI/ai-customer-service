@@ -291,26 +291,27 @@ function initTerminalWebSocket(server) {
     let shell, args
     const geminiAvailable = isGeminiAvailable()
 
-    if (geminiAvailable) {
-      // Spawn gemini CLI directly
-      if (IS_WINDOWS) {
-        shell = 'powershell.exe'
-        args = ['-NoLogo', '-NoProfile', '-Command', 'gemini']
-      } else {
+    if (IS_WINDOWS) {
+      shell = geminiAvailable ? 'powershell.exe' : 'powershell.exe'
+      args = geminiAvailable
+        ? ['-NoLogo', '-NoProfile', '-Command', 'gemini']
+        : ['-NoLogo', '-NoProfile']
+    } else {
+      // Always use wrapper script on Linux — ensures Node 22 + correct env
+      const wrapperPath = path.join(PROJECT_ROOT, 'scripts', 'gemini-wrapper.sh')
+      const fs = require('fs')
+      if (fs.existsSync(wrapperPath)) {
+        shell = wrapperPath
+        args = []
+        console.log('[Terminal] Using gemini-wrapper.sh')
+      } else if (geminiAvailable) {
         shell = 'gemini'
         args = []
-      }
-    } else {
-      // Fallback: regular shell so the trainer can still run commands
-      console.warn(
-        '[Terminal] Gemini CLI not found – falling back to shell'
-      )
-      if (IS_WINDOWS) {
-        shell = 'powershell.exe'
-        args = ['-NoLogo', '-NoProfile']
       } else {
-        shell = process.env.SHELL || 'bash'
-        args = []
+        // Fallback: interactive bash
+        shell = 'bash'
+        args = ['--login', '-i']
+        console.warn('[Terminal] Gemini CLI not found – falling back to bash')
       }
     }
 

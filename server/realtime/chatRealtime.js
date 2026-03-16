@@ -139,7 +139,16 @@ const handleAdminMessage = async (socket, data) => {
 }
 
 const initChatWebSocket = (server) => {
-  wss = new WebSocket.Server({ server, path: '/ws/chat' })
+  wss = new WebSocket.Server({ noServer: true })
+
+  // Handle upgrade for /ws/chat path
+  server.on('upgrade', (req, socket, head) => {
+    const url = new URL(req.url, `http://${req.headers.host}`)
+    if (url.pathname !== '/ws/chat') return
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      wss.emit('connection', ws, req)
+    })
+  })
 
   wss.on('connection', (socket) => {
     socket.isAuthed = false

@@ -96,6 +96,12 @@
     inset: 6px 6px 32px 6px; /* leave room for status bar */
   }
 
+  /* When embedded in iframe: hide header/statusbar, terminal fills 100% */
+  body.embedded #header { display: none; }
+  body.embedded #status-bar { display: none; }
+  body.embedded #terminal-container { inset: 0; }
+  body.embedded #reconnect-banner { bottom: 0; }
+
   /* xterm fills its container */
   #terminal-container .xterm { height: 100%; }
 
@@ -339,6 +345,9 @@
 
     term.open(termContainer);
     fitAddon.fit();
+    // Delayed re-fit to handle iframe sizing and late layout
+    setTimeout(function() { fitAddon.fit(); }, 100);
+    setTimeout(function() { fitAddon.fit(); }, 500);
 
     // send input
     term.onData(function (data) {
@@ -387,12 +396,24 @@
           termWrap.style.display = 'block';
           reconnectBanner.style.display = 'none';
           sessionStart = Date.now();
-          initTerminal();
-          // send initial size
-          if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
-          }
-          term.focus();
+          // Wait for DOM layout before initializing terminal
+          requestAnimationFrame(function() {
+            setTimeout(function() {
+              initTerminal();
+              // Send correct size after fit
+              if (ws && ws.readyState === WebSocket.OPEN && term) {
+                ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+              }
+              term.focus();
+              // Re-fit again after Gemini CLI starts rendering
+              setTimeout(function() {
+                if (fitAddon) fitAddon.fit();
+                if (ws && ws.readyState === WebSocket.OPEN && term) {
+                  ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+                }
+              }, 1000);
+            }, 50);
+          });
           break;
 
         case 'auth_failed':
@@ -446,6 +467,21 @@
   btnReconnect.addEventListener('click', function () {
     reconnectBanner.style.display = 'none';
     connect();
+  });
+
+  // Detect iframe embedding — hide chrome, maximize terminal
+  if (window.parent !== window) {
+    document.body.classList.add('embedded');
+  }
+
+  // Listen for refit message from parent iframe
+  window.addEventListener('message', function(e) {
+    if (e.data === 'refit' && fitAddon && term) {
+      fitAddon.fit();
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+      }
+    }
   });
 
   // Auto-login if token is passed via URL parameter (from admin dashboard iframe)

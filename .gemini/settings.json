@@ -1,13 +1,13 @@
 {
   "mcpServers": {
     "deeplink-kb": {
-      "command": "python",
+      "command": "python3",
       "args": ["mcp/kb_server.py"],
       "cwd": ".",
       "env": {}
     },
     "deeplink-mongo": {
-      "command": "python",
+      "command": "python3",
       "args": ["mcp/mongo_server.py"],
       "cwd": ".",
       "env": {}
@@ -15,5 +15,6 @@
   },
   "experimental": {
     "enableAgents": true
-  }
+  },
+  "selectedAuthType": "api-key"
 }

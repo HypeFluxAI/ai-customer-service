@@ -358,7 +358,7 @@ const server = http.createServer(async (req, res) => {
       })
 
       upstream.on('end', () => {
-        res.write('data: [DONE]\n\n')
+        // Gemini SDK doesn't expect [DONE], just close the stream
         res.end()
       })
 
