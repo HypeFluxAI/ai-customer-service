@@ -139,6 +139,15 @@ gemini                           # 在项目目录启动 Gemini CLI
 - `GET /api/ai-quality/stats` — AI 质量统计
 - `WebSocket /ws/chat` — 管理员实时面板
 
+### 训练 API (管理员)
+- `POST /api/training/chat` — 模拟客户对话，AI 回复 (含 KB 检索结果)
+- `POST /api/training/teach` — 直接教学 {question, answer} → 写入 KB + QnA
+- `POST /api/training/correct` — 纠正 {question, correctAnswer} → 覆盖学习
+- `GET /api/training/review` — 待审核的自学习知识列表
+- `POST /api/training/review/:id` — 审核通过/拒绝
+- `GET /api/training/history` — 训练历史记录
+- `GET /api/training/stats` — 训练统计
+
 ### AI 建议流程
 ```
 客户消息 → 异步触发 AI 建议
@@ -192,6 +201,7 @@ gemini                           # 在项目目录启动 Gemini CLI
 ```
 
 ## 更新日志
+- 2026-03-16: 添加训练 API (server/routes/training.js) — Admin UI 对话训练
 - 2026-03-16: 重构项目结构 — 服务端/桌面端分离 (desktop/)
 - 2026-03-16: 从 DeepLinkGame 移植 Node.js 客服后端 (完整系统)
 - 2026-03-16: 添加 Chat API Server 多渠道接入 (api/chat_server.py)
