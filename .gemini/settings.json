@@ -5,6 +5,12 @@
       "args": ["mcp/kb_server.py"],
       "cwd": ".",
       "env": {}
+    },
+    "deeplink-mongo": {
+      "command": "python",
+      "args": ["mcp/mongo_server.py"],
+      "cwd": ".",
+      "env": {}
     }
   },
   "experimental": {

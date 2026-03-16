@@ -200,7 +200,24 @@ gemini                           # 在项目目录启动 Gemini CLI
 └─────────────────────────────────────────────────────┘
 ```
 
+## Web Terminal (训练员远程使用 Gemini CLI)
+- 地址: `http://server:3001/terminal/terminal.html`
+- 原理: xterm.js → WebSocket → node-pty → Gemini CLI
+- 训练员打开浏览器即可使用完整 Gemini CLI Agent
+- 认证: CHAT_ADMIN_TOKEN
+- 最多 3 个并发终端会话
+
+## MongoDB MCP Server (mcp/mongo_server.py)
+Gemini CLI 通过此 MCP Server 访问 MongoDB 全量数据:
+- `chat_logs_query` — 查询聊天日志
+- `chat_stats` — 聊天统计分析
+- `kb_list/add/update/delete` — KB CRUD
+- `qna_list/add` — QnA 管理
+- `ai_quality_report` — AI 质量分析报告
+- `frequent_questions` — 高频未覆盖问题发掘
+
 ## 更新日志
+- 2026-03-16: Web Terminal + MongoDB MCP Server — 训练员浏览器远程训练
 - 2026-03-16: 添加训练 API (server/routes/training.js) — Admin UI 对话训练
 - 2026-03-16: 重构项目结构 — 服务端/桌面端分离 (desktop/)
 - 2026-03-16: 从 DeepLinkGame 移植 Node.js 客服后端 (完整系统)

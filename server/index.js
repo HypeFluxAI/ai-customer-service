@@ -28,8 +28,9 @@ app.use(cors())
 app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true }))
 
-// 静态文件 (上传的图片等)
+// 静态文件
 app.use('/uploads', express.static(path.join(__dirname, '../data/uploads')))
+app.use('/terminal', express.static(path.join(__dirname, 'public')))
 
 // ── Routes ──────────────────────────────────────────────────
 const chatRoutes = require('./routes/chat')
@@ -57,6 +58,16 @@ app.get('/api/health', (req, res) => {
 // ── WebSocket ───────────────────────────────────────────────
 const { initChatWebSocket } = require('./realtime/chatRealtime')
 initChatWebSocket(server)
+
+// Web Terminal (Gemini CLI over WebSocket PTY)
+try {
+  const { initTerminalWebSocket } = require('./terminal/ptyServer')
+  initTerminalWebSocket(server)
+  console.log('[Terminal] WebSocket PTY initialized')
+} catch (e) {
+  console.warn('[Terminal] PTY not available:', e.message)
+  console.warn('[Terminal] Install node-pty: npm install node-pty')
+}
 
 // ── Services Init ───────────────────────────────────────────
 const { initEmbeddingService } = require('./services/embedding')
@@ -128,6 +139,9 @@ mongoose.connect(MONGO_URI)
       console.log('    POST /api/training/chat     — 训练对话')
       console.log('    POST /api/training/teach    — 训练教学')
       console.log('    POST /api/training/correct  — 训练纠正')
+      console.log()
+      console.log(`  Web Terminal: http://localhost:${PORT}/terminal/terminal.html`)
+      console.log('    (Gemini CLI in browser for trainers)')
       console.log('═══════════════════════════════════════════════')
       console.log()
     })

@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Customer Service — Training Terminal</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5/lib/xterm.min.css">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #1a1a2e;
+    color: #e0e0e0;
+  }
+
+  #app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+
+  /* ── Header ── */
+  #header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+    height: 48px;
+    min-height: 48px;
+    background: #16213e;
+    border-bottom: 1px solid #0f3460;
+    user-select: none;
+  }
+
+  #header .title {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+  }
+
+  #header .right {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .status-badge {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 13px;
+    color: #aaa;
+  }
+
+  .status-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #f8333c;
+    transition: background 0.3s;
+  }
+
+  .status-dot.connected { background: #00d26a; }
+
+  .btn {
+    padding: 5px 14px;
+    border: 1px solid #0f3460;
+    border-radius: 4px;
+    background: transparent;
+    color: #ccc;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+  }
+  .btn:hover { background: #0f3460; border-color: #1a5276; }
+  .btn:disabled { opacity: 0.4; cursor: default; }
+  .btn.danger { border-color: #f8333c55; color: #f8333c; }
+  .btn.danger:hover { background: #f8333c22; }
+  .btn.primary { border-color: #00d26a55; color: #00d26a; }
+  .btn.primary:hover { background: #00d26a22; }
+
+  /* ── Terminal area ── */
+  #terminal-wrap {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    display: none;          /* shown after auth */
+  }
+
+  #terminal-container {
+    position: absolute;
+    inset: 6px 6px 32px 6px; /* leave room for status bar */
+  }
+
+  /* xterm fills its container */
+  #terminal-container .xterm { height: 100%; }
+
+  /* ── Status bar ── */
+  #status-bar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px;
+    font-size: 12px;
+    font-family: 'Menlo', 'Consolas', monospace;
+    color: #777;
+    background: #16213e;
+    border-top: 1px solid #0f3460;
+  }
+
+  /* ── Auth overlay ── */
+  #auth-overlay {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .auth-card {
+    width: 380px;
+    max-width: 92vw;
+    padding: 32px 28px;
+    background: #16213e;
+    border: 1px solid #0f3460;
+    border-radius: 10px;
+    text-align: center;
+  }
+
+  .auth-card h2 {
+    font-size: 18px;
+    margin-bottom: 6px;
+  }
+
+  .auth-card p {
+    font-size: 13px;
+    color: #888;
+    margin-bottom: 22px;
+  }
+
+  .auth-card input {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid #0f3460;
+    border-radius: 6px;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    font-size: 14px;
+    font-family: monospace;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .auth-card input:focus { border-color: #1a5276; }
+
+  .auth-card .error {
+    color: #f8333c;
+    font-size: 13px;
+    margin-top: 10px;
+    min-height: 18px;
+  }
+
+  .auth-card .actions {
+    margin-top: 18px;
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+  }
+
+  /* ── Reconnect banner ── */
+  #reconnect-banner {
+    display: none;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    padding: 24px 32px;
+    background: #16213eee;
+    border: 1px solid #0f3460;
+    border-radius: 10px;
+    text-align: center;
+    z-index: 20;
+  }
+
+  #reconnect-banner p {
+    margin-bottom: 14px;
+    font-size: 14px;
+    color: #ccc;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- Header -->
+  <div id="header">
+    <span class="title">AI Customer Service — Training Terminal</span>
+    <div class="right">
+      <span class="status-badge">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="status-text">Disconnected</span>
+      </span>
+      <button class="btn danger" id="btn-disconnect" disabled>Disconnect</button>
+    </div>
+  </div>
+
+  <!-- Auth overlay (shown first) -->
+  <div id="auth-overlay">
+    <div class="auth-card">
+      <h2>Training Terminal</h2>
+      <p>Enter admin token to connect</p>
+      <input type="password" id="token-input" placeholder="Admin token" autocomplete="off" autofocus>
+      <div class="error" id="auth-error"></div>
+      <div class="actions">
+        <button class="btn primary" id="btn-connect">Connect</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Terminal (hidden until auth) -->
+  <div id="terminal-wrap">
+    <div id="terminal-container"></div>
+    <div id="status-bar">
+      <span id="sb-left">—</span>
+      <span id="sb-right">—</span>
+    </div>
+
+    <!-- Reconnect banner (inside terminal-wrap) -->
+    <div id="reconnect-banner">
+      <p>Connection lost.</p>
+      <button class="btn primary" id="btn-reconnect">Reconnect</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/xterm@5/lib/xterm.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links@0.9.0/lib/xterm-addon-web-links.min.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  // ── DOM refs ──
+  const authOverlay    = document.getElementById('auth-overlay');
+  const tokenInput     = document.getElementById('token-input');
+  const authError      = document.getElementById('auth-error');
+  const btnConnect     = document.getElementById('btn-connect');
+  const btnDisconnect  = document.getElementById('btn-disconnect');
+  const btnReconnect   = document.getElementById('btn-reconnect');
+  const termWrap       = document.getElementById('terminal-wrap');
+  const termContainer  = document.getElementById('terminal-container');
+  const statusDot      = document.getElementById('status-dot');
+  const statusText     = document.getElementById('status-text');
+  const sbLeft         = document.getElementById('sb-left');
+  const sbRight        = document.getElementById('sb-right');
+  const reconnectBanner = document.getElementById('reconnect-banner');
+
+  let ws       = null;
+  let term     = null;
+  let fitAddon = null;
+  let token    = '';
+  let sessionStart = null;
+
+  // ── Helpers ──
+  function setStatus(connected, text) {
+    statusDot.classList.toggle('connected', connected);
+    statusText.textContent = text || (connected ? 'Connected' : 'Disconnected');
+    btnDisconnect.disabled = !connected;
+  }
+
+  function wsUrl() {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return proto + '//' + location.host + '/ws/terminal';
+  }
+
+  function elapsed() {
+    if (!sessionStart) return '—';
+    const s = Math.floor((Date.now() - sessionStart) / 1000);
+    const m = Math.floor(s / 60);
+    const h = Math.floor(m / 60);
+    if (h > 0) return h + 'h ' + (m % 60) + 'm';
+    if (m > 0) return m + 'm ' + (s % 60) + 's';
+    return s + 's';
+  }
+
+  function updateStatusBar() {
+    if (term) {
+      sbLeft.textContent = 'Size: ' + term.cols + 'x' + term.rows;
+    }
+    sbRight.textContent = 'Session: ' + elapsed();
+  }
+
+  // ── Terminal setup ──
+  function initTerminal() {
+    if (term) { term.dispose(); }
+
+    term = new Terminal({
+      cursorBlink: true,
+      fontSize: 14,
+      fontFamily: "'JetBrains Mono', 'Cascadia Code', 'Menlo', 'Consolas', 'Liberation Mono', monospace",
+      theme: {
+        background:  '#1a1a2e',
+        foreground:  '#e0e0e0',
+        cursor:      '#00d26a',
+        cursorAccent:'#1a1a2e',
+        selectionBackground: 'rgba(15,52,96,0.5)',
+        black:       '#1a1a2e',
+        red:         '#f8333c',
+        green:       '#00d26a',
+        yellow:      '#f2a93b',
+        blue:        '#4e9af1',
+        magenta:     '#c792ea',
+        cyan:        '#89ddff',
+        white:       '#e0e0e0',
+        brightBlack: '#555',
+        brightRed:   '#ff6b6b',
+        brightGreen: '#69f0ae',
+        brightYellow:'#ffd54f',
+        brightBlue:  '#82b1ff',
+        brightMagenta:'#e1bee7',
+        brightCyan:  '#a7fdeb',
+        brightWhite: '#ffffff',
+      },
+      allowProposedApi: true,
+    });
+
+    fitAddon = new FitAddon.FitAddon();
+    const webLinksAddon = new WebLinksAddon.WebLinksAddon();
+
+    term.loadAddon(fitAddon);
+    term.loadAddon(webLinksAddon);
+
+    term.open(termContainer);
+    fitAddon.fit();
+
+    // send input
+    term.onData(function (data) {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'input', data: data }));
+      }
+    });
+
+    // handle resize
+    term.onResize(function (size) {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'resize', cols: size.cols, rows: size.rows }));
+      }
+      updateStatusBar();
+    });
+
+    window.addEventListener('resize', function () {
+      if (fitAddon) { fitAddon.fit(); }
+    });
+
+    updateStatusBar();
+  }
+
+  // ── WebSocket ──
+  function connect() {
+    if (ws) { ws.close(); ws = null; }
+
+    setStatus(false, 'Connecting...');
+    authError.textContent = '';
+    btnConnect.disabled = true;
+
+    ws = new WebSocket(wsUrl());
+
+    ws.onopen = function () {
+      ws.send(JSON.stringify({ type: 'auth', token: token }));
+    };
+
+    ws.onmessage = function (evt) {
+      var msg;
+      try { msg = JSON.parse(evt.data); } catch (_) { return; }
+
+      switch (msg.type) {
+        case 'auth_success':
+          setStatus(true, 'Connected');
+          authOverlay.style.display = 'none';
+          termWrap.style.display = 'block';
+          reconnectBanner.style.display = 'none';
+          sessionStart = Date.now();
+          initTerminal();
+          // send initial size
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+          }
+          term.focus();
+          break;
+
+        case 'auth_failed':
+          setStatus(false, 'Auth failed');
+          authError.textContent = msg.message || 'Authentication failed. Check your token.';
+          btnConnect.disabled = false;
+          tokenInput.focus();
+          if (ws) { ws.close(); ws = null; }
+          break;
+
+        case 'output':
+          if (term && msg.data) { term.write(msg.data); }
+          break;
+      }
+    };
+
+    ws.onclose = function () {
+      setStatus(false, 'Disconnected');
+      btnConnect.disabled = false;
+      if (termWrap.style.display === 'block') {
+        reconnectBanner.style.display = 'block';
+      }
+    };
+
+    ws.onerror = function () {
+      setStatus(false, 'Error');
+      btnConnect.disabled = false;
+      if (termWrap.style.display !== 'block') {
+        authError.textContent = 'Connection error. Is the server running?';
+      }
+    };
+  }
+
+  // ── Event listeners ──
+  btnConnect.addEventListener('click', function () {
+    token = tokenInput.value.trim();
+    if (!token) { authError.textContent = 'Token is required.'; return; }
+    connect();
+  });
+
+  tokenInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { btnConnect.click(); }
+  });
+
+  btnDisconnect.addEventListener('click', function () {
+    if (ws) { ws.close(); ws = null; }
+    setStatus(false, 'Disconnected');
+    reconnectBanner.style.display = 'block';
+  });
+
+  btnReconnect.addEventListener('click', function () {
+    reconnectBanner.style.display = 'none';
+    connect();
+  });
+
+  // update session timer every second
+  setInterval(updateStatusBar, 1000);
+})();
+</script>
+</body>
+</html>
