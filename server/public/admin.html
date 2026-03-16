@@ -867,9 +867,13 @@ table.data-table .truncate {
       </div>
     </div>
 
-    <!-- Tab 5: Terminal (inline xterm.js, no iframe) -->
+    <!-- Tab 5: Terminal (opens in new window) -->
     <div class="tab-pane" id="pane-terminal">
-      <div id="inline-term-container" style="width:100%;height:100%;"></div>
+      <div style="display:flex;align-items:center;justify-content:center;height:100%;flex-direction:column;gap:16px;">
+        <div style="color:#8888aa;font-size:14px;text-align:center;line-height:1.8;" data-i18n="terminal_desc">Gemini CLI 终端在独立窗口中运行效果最佳。<br>点击下方按钮打开终端窗口。</div>
+        <button id="btn-open-terminal" style="padding:12px 32px;background:#4361ee;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;" data-i18n="terminal_open_btn">🖥️ 打开终端窗口</button>
+        <div style="color:#555;font-size:12px;" data-i18n="terminal_hint">终端使用 Claude Opus 4.6 (通过 ZenMux API)</div>
+      </div>
     </div>
   </div>
 </div>
@@ -974,6 +978,9 @@ table.data-table .truncate {
       tab_kb: '\uD83D\uDD0D 지식베이스',
       tab_analytics: '\uD83D\uDCCA 분석 리포트',
       tab_terminal: '\uD83D\uDDA5\uFE0F 터미널',
+      terminal_desc: 'Gemini CLI 터미널은 독립 창에서 실행하면 최적의 환경을 제공합니다.<br>아래 버튼을 클릭하여 터미널 창을 열어주세요.',
+      terminal_open_btn: '\uD83D\uDDA5\uFE0F 터미널 창 열기',
+      terminal_hint: '터미널은 Claude Opus 4.6 을 사용합니다 (ZenMux API)',
       // Chat Tab
       chat_empty: 'AI 고객서비스 훈련 채팅<br>고객처럼 질문하면 AI가 답변합니다<br><span style="color:#8888aa;font-size:12px;">답변을 교정하거나 새 지식을 가르칠 수 있습니다</span>',
       chat_placeholder: '고객 질문을 입력하세요...',
@@ -1120,6 +1127,9 @@ table.data-table .truncate {
       tab_kb: '\uD83D\uDD0D 知识库',
       tab_analytics: '\uD83D\uDCCA 分析报告',
       tab_terminal: '\uD83D\uDDA5\uFE0F 终端',
+      terminal_desc: 'Gemini CLI 终端在独立窗口中运行效果最佳。<br>点击下方按钮打开终端窗口。',
+      terminal_open_btn: '\uD83D\uDDA5\uFE0F 打开终端窗口',
+      terminal_hint: '终端使用 Claude Opus 4.6 (通过 ZenMux API)',
       // Chat Tab
       chat_empty: 'AI 客服训练聊天<br>像客户一样提问，AI会回答<br><span style="color:#8888aa;font-size:12px;">可以纠正回复或教授新知识</span>',
       chat_placeholder: '输入消息...',
@@ -1266,6 +1276,9 @@ table.data-table .truncate {
       tab_kb: '\uD83D\uDD0D Knowledge Base',
       tab_analytics: '\uD83D\uDCCA Analytics',
       tab_terminal: '\uD83D\uDDA5\uFE0F Terminal',
+      terminal_desc: 'Gemini CLI terminal works best in a separate window.<br>Click the button below to open the terminal.',
+      terminal_open_btn: '\uD83D\uDDA5\uFE0F Open Terminal Window',
+      terminal_hint: 'Terminal uses Claude Opus 4.6 (via ZenMux API)',
       // Chat Tab
       chat_empty: 'AI Customer Service Training Chat<br>Ask questions like a customer, AI will respond<br><span style="color:#8888aa;font-size:12px;">You can correct replies or teach new knowledge</span>',
       chat_placeholder: 'Type a message...',
@@ -1620,10 +1633,7 @@ table.data-table .truncate {
       if (btn.dataset.tab === 'kb') loadKB();
       if (btn.dataset.tab === 'analytics') loadAnalytics();
       if (btn.dataset.tab === 'teach') loadTeachHistory();
-      // Initialize inline terminal when tab is first shown
-      if (btn.dataset.tab === 'terminal') {
-        initInlineTerminal();
-      }
+      // Terminal tab - no inline init needed, uses button to open window
     });
   });
 
@@ -2212,138 +2222,11 @@ table.data-table .truncate {
   // ── Initialize language on page load ──
   setLang(currentLang);
 
-  // ── Inline Terminal (xterm.js, no iframe) ──
-  var inlineTerm = null;
-  var inlineFitAddon = null;
-  var termWs = null;
-  var termInitialized = false;
-
-  function initInlineTerminal() {
-    if (termInitialized) {
-      // Re-fit on tab switch
-      if (inlineFitAddon) {
-        setTimeout(function() { inlineFitAddon.fit(); }, 50);
-      }
-      return;
-    }
-
-    // Load xterm.js dynamically
-    var link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = 'https://cdn.jsdelivr.net/npm/xterm@5/lib/xterm.min.css';
-    document.head.appendChild(link);
-
-    loadScript('https://cdn.jsdelivr.net/npm/xterm@5/lib/xterm.min.js', function() {
-      loadScript('https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js', function() {
-        createTerminal();
-      });
-    });
-  }
-
-  function loadScript(src, cb) {
-    var s = document.createElement('script');
-    s.src = src;
-    s.onload = cb;
-    document.head.appendChild(s);
-  }
-
-  function createTerminal() {
-    var container = document.getElementById('inline-term-container');
-    if (!container) return;
-
-    inlineTerm = new Terminal({
-      cursorBlink: true,
-      fontSize: 14,
-      fontFamily: "'JetBrains Mono', 'Cascadia Code', 'Menlo', 'Consolas', monospace",
-      theme: {
-        background: '#0f0f1a',
-        foreground: '#e0e0e0',
-        cursor: '#00d26a',
-        cursorAccent: '#0f0f1a',
-        selectionBackground: 'rgba(67,97,238,0.3)',
-      },
-      allowProposedApi: true,
-    });
-
-    inlineFitAddon = new FitAddon.FitAddon();
-    inlineTerm.loadAddon(inlineFitAddon);
-    inlineTerm.open(container);
-
-    // Wait for layout then fit
-    requestAnimationFrame(function() {
-      setTimeout(function() {
-        inlineFitAddon.fit();
-        connectTerminalWs();
-        termInitialized = true;
-      }, 100);
-    });
-
-    // Handle resize
-    window.addEventListener('resize', function() {
-      if (inlineFitAddon) inlineFitAddon.fit();
-    });
-
-    // Send input to WebSocket
-    inlineTerm.onData(function(data) {
-      if (termWs && termWs.readyState === WebSocket.OPEN) {
-        termWs.send(JSON.stringify({ type: 'input', data: data }));
-      }
-    });
-
-    inlineTerm.onResize(function(size) {
-      if (termWs && termWs.readyState === WebSocket.OPEN) {
-        termWs.send(JSON.stringify({ type: 'resize', cols: size.cols, rows: size.rows }));
-      }
-    });
-  }
-
-  function connectTerminalWs() {
-    if (termWs) { termWs.close(); termWs = null; }
-
-    var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    var url = proto + '//' + location.host + '/ws/terminal';
-    termWs = new WebSocket(url);
-
-    termWs.onopen = function() {
-      termWs.send(JSON.stringify({ type: 'auth', token: authToken }));
-    };
-
-    termWs.onmessage = function(evt) {
-      var msg;
-      try { msg = JSON.parse(evt.data); } catch(_) { return; }
-
-      if (msg.type === 'output' && inlineTerm) {
-        inlineTerm.write(msg.data);
-      } else if (msg.type === 'auth_success') {
-        inlineTerm.writeln('\r\n\x1b[32mConnected to training terminal.\x1b[0m\r\n');
-        // Send initial size
-        if (inlineFitAddon) inlineFitAddon.fit();
-        setTimeout(function() {
-          if (termWs && termWs.readyState === WebSocket.OPEN && inlineTerm) {
-            termWs.send(JSON.stringify({ type: 'resize', cols: inlineTerm.cols, rows: inlineTerm.rows }));
-          }
-          inlineTerm.focus();
-        }, 200);
-      } else if (msg.type === 'auth_failed') {
-        inlineTerm.writeln('\r\n\x1b[31mAuth failed: ' + (msg.message || '') + '\x1b[0m');
-      } else if (msg.type === 'error') {
-        inlineTerm.writeln('\r\n\x1b[31mError: ' + (msg.message || '') + '\x1b[0m');
-      }
-    };
-
-    termWs.onclose = function() {
-      if (inlineTerm) {
-        inlineTerm.writeln('\r\n\x1b[33mDisconnected. Click terminal tab again to reconnect.\x1b[0m');
-      }
-      termInitialized = false; // Allow reconnect on next tab click
-    };
-
-    termWs.onerror = function() {
-      if (inlineTerm) {
-        inlineTerm.writeln('\r\n\x1b[31mConnection error.\x1b[0m');
-      }
-    };
-  }
+  // ── Terminal: open in new window ──
+  document.getElementById('btn-open-terminal').addEventListener('click', function() {
+    var url = '/terminal/terminal.html?token=' + encodeURIComponent(authToken);
+    window.open(url, 'gemini-terminal', 'width=1200,height=800,menubar=no,toolbar=no,status=no');
+  });
 
 })();
 </script>
