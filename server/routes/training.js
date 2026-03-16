@@ -11,6 +11,7 @@
 
 const express = require('express')
 const router = express.Router()
+const mongoose = require('mongoose')
 const { KnowledgeBase } = require('../models/KnowledgeBase')
 const QnA = require('../models/QnA')
 const { generateSuggestion, findRelevantKnowledge, findRelevantQnA, buildSystemPrompt, buildContextMessages, resolveLanguage } = require('../services/aiSuggest')
@@ -57,7 +58,7 @@ router.post('/chat', async (req, res) => {
 
     // 2. 生成 AI 回复 (复用 aiSuggest 的完整上下文)
     const reply = await generateSuggestion(
-      'training-session',  // 虚拟 sessionId
+      new mongoose.Types.ObjectId().toString(),  // 虚拟 sessionId (valid ObjectId)
       message,
       lang,
       null,  // no image
