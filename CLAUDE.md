@@ -19,6 +19,7 @@ logging_/    日志系统
 tools/       辅助工具
 training/    交互式训练 CLI (Python 版)
 mcp/         MCP Server — 知识库服务 (Gemini CLI 集成)
+api/         HTTP Chat API — Web/Telegram/外部客户端接口
 .gemini/     Gemini CLI 配置、Skills、Subagents
 tests/       测试
 data/        数据目录（截图、对话日志、知识库）
@@ -93,7 +94,26 @@ data/        数据目录（截图、对话日志、知识库）
 3. 说 "刚才答错了，正确的是..." → 纠正并学习
 4. `@cs-trainer` → 启用专用训练 Agent
 
+## Chat API Server (api/)
+HTTP 接口，供 Web/Telegram/外部客户端接入:
+- 启动: `python api/chat_server.py --port 8080`
+- `POST /chat` — 客户对话（KB 检索 + AI 生成）
+- `POST /teach` — [管理员] 教学
+- `POST /correct` — [管理员] 纠正
+- `GET /search?q=` — [管理员] 搜索知识库
+- `GET /stats` — 知识库统计
+- 管理员认证: `Authorization: Bearer $ADMIN_API_TOKEN`
+- CORS 已开启，支持前端直连
+
+## 多渠道接入架构
+```
+训练人员 → Gemini CLI → MCP Server → ChromaDB (训练/教学)
+客户用户 → Web/Telegram → Chat API → ChromaDB + AI (对话)
+客服窗口 → KakaoTalk → 截图引擎 → ChromaDB + AI (自动回复)
+```
+
 ## 更新日志
+- 2026-03-16: 添加 Chat API Server 多渠道接入 (api/chat_server.py)
 - 2026-03-16: 添加 Gemini CLI 架构图解文档 (docs/gemini-cli-architecture.md)
 - 2026-03-16: 集成 Gemini CLI (MCP Server + Skill + Subagent)
 - 2026-03-16: 添加交互式训练模式 (training/cli.py)
