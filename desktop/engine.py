@@ -7,16 +7,16 @@ import threading
 import anthropic
 
 from core.state import EngineState, StateManager
-from capture.window import find_chat_window, get_window_rect
-from capture.screenshot import capture_window, save_screenshot
-from capture.diff import DiffDetector
+from desktop.capture.window import find_chat_window, get_window_rect
+from desktop.capture.screenshot import capture_window, save_screenshot
+from desktop.capture.diff import DiffDetector
 from analysis.vision import analyze_screenshot, ChatMessage
 from analysis.dedup import MessageDedup
 from knowledge.store import KnowledgeStore
 from knowledge.learner import Learner
 from response.generator import generate_reply
 from response.safety import SafetyGuard
-from automation.kakao import send_message
+from desktop.automation.kakao import send_message
 from logging_.logger import ConversationLogger
 
 logger = logging.getLogger("ai_cs.engine")

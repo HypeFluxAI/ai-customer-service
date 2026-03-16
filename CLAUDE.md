@@ -34,17 +34,24 @@ server/              Node.js 后端服务 (从 DeepLinkGame 移植)
   └── realtime/
       └── chatRealtime.js   WebSocket 实时聊天
 
-core/        Python 主引擎和状态机
-capture/     窗口检测、截图、差异检测
+── Python 服务端 (可部署到服务器) ──
+core/        状态机定义
 analysis/    Claude Vision 分析、消息去重
 knowledge/   ChromaDB 知识库、文件导入、自学习
 response/    AI 回复生成、安全防护
-automation/  KakaoTalk 桌面操作（鼠标/键盘）
 logging_/    日志系统
-tools/       辅助工具
-training/    交互式训练 CLI (Python 版)
+training/    交互式训练 CLI
 mcp/         MCP Server — 知识库服务 (Gemini CLI 集成)
 api/         Python HTTP Chat API
+
+── Python 桌面端 (仅本地 Windows) ──
+desktop/
+  ├── engine.py       桌面自动化主引擎
+  ├── capture/        窗口检测、截图、差异检测 (Win32 API)
+  ├── automation/     KakaoTalk 桌面操作 (鼠标/键盘)
+  └── tools/          窗口调试工具
+
+── 通用 ──
 .gemini/     Gemini CLI 配置、Skills、Subagents
 scripts/     数据库导入脚本
 tests/       测试
@@ -159,17 +166,33 @@ gemini                           # 在项目目录启动 Gemini CLI
 - **Subagent** (`.gemini/agents/cs-trainer.md`): 专用训练 Agent
 - **使用**: `gemini` → 直接对话训练，免费 Gemini 2.5 Pro
 
-## 多渠道架构
+## 部署架构
 ```
-训练人员 → Gemini CLI → MCP → ChromaDB (训练)
-管理员   → Vue Admin → WebSocket → Node.js 后端 (管理)
-客户     → Web Widget → REST API → Node.js 后端 (对话)
-客户     → KakaoTalk → Webhook → Node.js 后端 (Bot)
-客服窗口 → KakaoTalk → Python 截图引擎 (桌面自动化)
-所有渠道共享 MongoDB + ChromaDB 知识库
+┌─── 云服务器 (7×24 运行) ───────────────────────────┐
+│  Node.js 后端 (server/)                             │
+│  ├── 聊天 API + WebSocket                           │
+│  ├── KB MongoDB + AI 建议                           │
+│  ├── 质量评估 + 自动学习                              │
+│  └── KakaoTalk Bot Webhook                          │
+│                                                     │
+│  Python 服务端 (可选)                                │
+│  ├── api/chat_server.py (HTTP API)                  │
+│  ├── mcp/kb_server.py (MCP Server)                  │
+│  └── knowledge/ + response/ + analysis/             │
+└─────────────────────────────────────────────────────┘
+
+┌─── 本地 Windows 电脑 ──────────────────────────────┐
+│  Python 桌面端 (desktop/)                           │
+│  ├── KakaoTalk 截图 + Win32 自动化                   │
+│  └── python run.py                                  │
+│                                                     │
+│  Gemini CLI 训练 (终端)                              │
+│  └── gemini / @cs-trainer                           │
+└─────────────────────────────────────────────────────┘
 ```
 
 ## 更新日志
+- 2026-03-16: 重构项目结构 — 服务端/桌面端分离 (desktop/)
 - 2026-03-16: 从 DeepLinkGame 移植 Node.js 客服后端 (完整系统)
 - 2026-03-16: 添加 Chat API Server 多渠道接入 (api/chat_server.py)
 - 2026-03-16: 添加 Gemini CLI 架构图解文档 (docs/gemini-cli-architecture.md)

@@ -30,8 +30,8 @@ def load_config(path: str = "config.yaml") -> dict:
 
 
 def cmd_start(config: dict, api_key: str):
-    """启动 AI 客服服务"""
-    from core.engine import Engine
+    """启动 AI 客服服务 (需要 Windows 桌面环境)"""
+    from desktop.engine import Engine
 
     engine = Engine(config, api_key)
     print("AI Customer Service Engine started.")
@@ -51,7 +51,7 @@ def cmd_start(config: dict, api_key: str):
 
 def cmd_import(config: dict, api_key: str, file_path: str):
     """导入单个知识库文件"""
-    from core.engine import Engine
+    from desktop.engine import Engine
 
     engine = Engine(config, api_key)
     count = engine.import_knowledge(file_path)
@@ -61,7 +61,7 @@ def cmd_import(config: dict, api_key: str, file_path: str):
 
 def cmd_import_dir(config: dict, api_key: str, dir_path: str):
     """批量导入目录"""
-    from core.engine import Engine
+    from desktop.engine import Engine
     from pathlib import Path
 
     engine = Engine(config, api_key)
@@ -80,8 +80,8 @@ def cmd_import_dir(config: dict, api_key: str, dir_path: str):
 
 def cmd_test_capture(config: dict):
     """测试截图功能"""
-    from capture.window import find_chat_window, find_kakao_windows
-    from capture.screenshot import capture_window, save_screenshot
+    from desktop.capture.window import find_chat_window, find_kakao_windows
+    from desktop.capture.screenshot import capture_window, save_screenshot
 
     title = config["kakao"]["window_title_pattern"]
 
@@ -106,7 +106,7 @@ def cmd_test_capture(config: dict):
 
     print(f"Found: {window}")
 
-    from capture.window import get_window_rect
+    from desktop.capture.window import get_window_rect
     rect = get_window_rect(window.hwnd)
     img = capture_window(rect)
     if img:
