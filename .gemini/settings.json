@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "deeplink-kb": {
+      "command": "python",
+      "args": ["mcp/kb_server.py"],
+      "cwd": ".",
+      "env": {}
+    }
+  },
+  "experimental": {
+    "enableAgents": true
+  }
+}
