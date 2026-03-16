@@ -59,10 +59,22 @@ data/        数据目录（截图、对话日志、知识库）
 
 ## 运行命令
 - 启动服务: `python run.py`
+- 交互式训练: `python run.py --train`
 - 导入知识库: `python run.py --import FILE`
 - 批量导入: `python run.py --import-dir DIR`
 - 测试截图: `python run.py --test-capture`
 - 测试 Vision: `python run.py --test-vision IMG`
 
+## 训练模式 (training/)
+交互式 CLI 训练，像聊天一样直接与客服系统对话训练:
+- 直接输入问题 → 客服回复（使用完整 KB 检索 + AI 生成流程）
+- `/teach Q ||| A` — 直接教学，立即写入知识库
+- `/correct` — 纠正上一条错误回复并学习
+- `/search` — 搜索知识库内容
+- `/import FILE` — 从 Q&A JSON 批量训练
+- `/export` — 导出训练记录
+- 训练日志: `data/training/`
+
 ## 更新日志
+- 2026-03-16: 添加交互式训练模式 (training/cli.py)
 - 2026-03-16: 创建 CLAUDE.md 项目规则文件

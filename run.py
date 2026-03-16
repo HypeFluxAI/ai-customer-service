@@ -3,6 +3,7 @@
 
 用法:
   python run.py                    # 启动服务
+  python run.py --train            # 交互式训练模式
   python run.py --import FILE      # 导入知识库文件
   python run.py --import-dir DIR   # 批量导入目录下所有文件
   python run.py --test-capture     # 测试截图功能
@@ -142,6 +143,7 @@ def cmd_test_vision(config: dict, api_key: str, image_path: str):
 def main():
     parser = argparse.ArgumentParser(description="AI Customer Service Automation")
     parser.add_argument("--config", default="config.yaml", help="Config file path")
+    parser.add_argument("--train", action="store_true", help="Interactive training mode")
     parser.add_argument("--import", dest="import_file", help="Import knowledge base file")
     parser.add_argument("--import-dir", help="Import all files in directory")
     parser.add_argument("--test-capture", action="store_true", help="Test screenshot capture")
@@ -154,7 +156,14 @@ def main():
 
     api_key = os.getenv("ANTHROPIC_API_KEY", "")
 
-    if args.test_capture:
+    if args.train:
+        if not api_key:
+            print("Error: ANTHROPIC_API_KEY not set in .env")
+            sys.exit(1)
+        from training.cli import TrainingSession
+        session = TrainingSession(config, api_key)
+        session.run()
+    elif args.test_capture:
         cmd_test_capture(config)
     elif args.test_vision:
         if not api_key:
