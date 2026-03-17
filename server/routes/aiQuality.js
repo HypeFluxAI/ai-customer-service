@@ -154,6 +154,114 @@ router.get('/flagged-kb', async (req, res) => {
     }
 });
 
+// GET /api/chat/ai-quality/knowledge-gaps — 知识覆盖缺口分析
+// 聚合 new_knowledge + correction 类别的问题，找出高频未覆盖话题
+router.get('/knowledge-gaps', async (req, res) => {
+    try {
+        const days = Math.min(90, Math.max(1, parseInt(req.query.days) || 14));
+        const since = new Date(Date.now() - days * 86400000);
+
+        // 获取 AI 不知道或答错的建议，连带管理员的正确回复
+        const gaps = await AiSuggestion.find({
+            createdAt: { $gte: since },
+            evaluationCategory: { $in: ['new_knowledge', 'correction'] },
+            adminReply: { $ne: null },
+        })
+            .select('userMessage adminReply suggestion evaluationCategory qualityScore createdAt')
+            .sort({ createdAt: -1 })
+            .lean();
+
+        // 按关键词聚类，找出高频问题模式
+        const clusterMap = new Map(); // keyword → { count, examples[] }
+        for (const gap of gaps) {
+            const msg = (gap.userMessage || '').toLowerCase().replace(/[^\w\s가-힣一-龥]/g, ' ').trim();
+            if (!msg) continue;
+
+            // 提取 2+ 字符的关键词
+            const words = [...new Set(msg.split(/\s+/).filter(w => w.length >= 2))];
+            // 用前两个关键词组合作为聚类键（更精确）
+            const key = words.slice(0, 3).sort().join('+') || msg.substring(0, 30);
+
+            if (!clusterMap.has(key)) {
+                clusterMap.set(key, { keywords: key, count: 0, examples: [] });
+            }
+            const cluster = clusterMap.get(key);
+            cluster.count++;
+            if (cluster.examples.length < 3) {
+                cluster.examples.push({
+                    userMessage: gap.userMessage,
+                    adminReply: gap.adminReply,
+                    category: gap.evaluationCategory,
+                    qualityScore: gap.qualityScore,
+                });
+            }
+        }
+
+        // 按频次排序，返回 top 30
+        const clusters = [...clusterMap.values()]
+            .filter(c => c.count >= 2) // 至少出现 2 次
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 30);
+
+        res.json({
+            success: true,
+            data: {
+                totalGaps: gaps.length,
+                clusters,
+                days,
+            },
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// POST /api/chat/ai-quality/knowledge-gaps/learn — 一键将管理员回复写入 KB
+router.post('/knowledge-gaps/learn', async (req, res) => {
+    try {
+        const { items } = req.body; // [{ userMessage, adminReply, language }]
+        if (!Array.isArray(items) || items.length === 0) {
+            return res.status(400).json({ success: false, error: 'items array required' });
+        }
+
+        const created = [];
+        for (const item of items.slice(0, 20)) { // 最多 20 条
+            const { userMessage, adminReply, language } = item;
+            if (!userMessage || !adminReply) continue;
+
+            // 去重：检查是否已有相似 KB
+            const existing = await KnowledgeBase.findOne({
+                title: userMessage.substring(0, 100),
+                isActive: true,
+            });
+            if (existing) continue;
+
+            const entry = await KnowledgeBase.create({
+                title: userMessage.substring(0, 100),
+                contentHtml: `<p>${adminReply}</p>`,
+                keywords: [...new Set(
+                    userMessage.toLowerCase()
+                        .replace(/[^\w\s가-힣一-龥]/g, ' ')
+                        .split(/\s+/)
+                        .filter(w => w.length >= 2)
+                )].slice(0, 10),
+                language: language || 'ko',
+                source: 'admin_teach',
+                confidence: 0.9,
+                isActive: true,
+            });
+            created.push(entry._id);
+        }
+
+        res.json({
+            success: true,
+            data: { created: created.length, ids: created },
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // POST /api/chat/ai-quality/kb/:id/resolve — admin review (keep or archive)
 router.post('/kb/:id/resolve', async (req, res) => {
     try {

@@ -48,17 +48,23 @@ async function loadCache() {
 
 /**
  * Find similar admin replies for few-shot examples
+ * 合并 replyCache（评估后）+ recentReplies（即时），过滤低质量
  */
-function findSimilarReplies(userMessage, language, topK = 3) {
-  if (replyCache.length === 0) return []
+function findSimilarReplies(userMessage, language, topK = 5) {
+  const allEntries = [
+    ...replyCache,
+    ...recentReplies.map(e => ({ ...e, qualityScore: 60, category: 'recent' })),
+  ]
+  if (allEntries.length === 0) return []
 
   const queryKeywords = extractKeywords(userMessage)
-  if (queryKeywords.length === 0) return getRandomGolden(2)
+  if (queryKeywords.length === 0) return getRandomGolden(3)
 
-  // Score each cached entry by keyword overlap
   const scored = []
-  for (const entry of replyCache) {
-    if (!entry.adminReply || entry.adminReply.length < 5) continue
+  for (const entry of allEntries) {
+    if (!entry.adminReply || entry.adminReply.length < 10) continue
+    // 过滤纯短回复（"네", "감사합니다" 等没有参考价值）
+    if (entry.adminReply.length < 15 && !entry.adminReply.includes(' ')) continue
 
     let score = 0
     for (const qw of queryKeywords) {
@@ -69,20 +75,31 @@ function findSimilarReplies(userMessage, language, topK = 3) {
     }
 
     if (score > 0) {
-      // Boost corrections (teach AI what NOT to do) and high-quality golden examples
+      // correction 示例教 AI 不要犯同样的错
       if (entry.category === 'correction') score += 5
-      else if (entry.qualityScore >= 70) score += 2
+      // 高质量黄金示例加分
+      else if (entry.qualityScore >= 70) score += 3
+      // 近期回复微加分（更贴近当前风格）
+      else if (entry.category === 'recent') score += 1
       scored.push({ ...entry, score })
     }
   }
 
-  if (scored.length === 0) return getRandomGolden(2)
+  if (scored.length === 0) return getRandomGolden(3)
 
   scored.sort((a, b) => b.score - a.score)
-  return scored.slice(0, topK).map(e => ({
-    userMessage: e.userMessage,
-    adminReply: e.adminReply,
-  }))
+
+  // 去重：避免多条回复内容相似
+  const result = []
+  const seen = new Set()
+  for (const e of scored) {
+    if (result.length >= topK) break
+    const key = e.adminReply.substring(0, 40)
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push({ userMessage: e.userMessage, adminReply: e.adminReply })
+  }
+  return result
 }
 
 /**

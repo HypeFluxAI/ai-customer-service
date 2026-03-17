@@ -297,7 +297,7 @@ async function generateSuggestion(sessionId, userMessage, language, imageUrl, ti
 
   // Inject few-shot examples from admin reply history
   if (adminReplyCache.isReady()) {
-    const fewShot = adminReplyCache.findSimilarReplies(userMessage || '', lang, 3)
+    const fewShot = adminReplyCache.findSimilarReplies(userMessage || '', lang, 5)
     if (fewShot.length > 0) {
       const examples = fewShot.map((ex, i) =>
         `예시 ${i + 1}:\n고객: ${ex.userMessage}\n상담원: ${ex.adminReply}`
