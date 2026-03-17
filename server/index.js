@@ -49,6 +49,7 @@ const kakaoWebhook = require('./routes/kakaoWebhook')
 const aiQualityRoutes = require('./routes/aiQuality')
 const trainingRoutes = require('./routes/training')
 const settingsRoutes = require('./routes/settings')
+const qnaRoutes = require('./routes/qna')
 
 app.use('/api/chat', chatRoutes)
 app.use('/api/kb', kbRoutes)
@@ -58,6 +59,7 @@ app.use('/api/ai-quality', aiQualityRoutes)
 app.use('/api/chat/ai-quality', aiQualityRoutes) // alias: 前端期望的路径
 app.use('/api/training', trainingRoutes)
 app.use('/api/settings', settingsRoutes)
+app.use('/api/qna', qnaRoutes)
 
 // 健康检查
 app.get('/api/health', (req, res) => {

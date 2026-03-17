@@ -8,6 +8,7 @@
 const { AiSuggestion } = require('../models/AiSuggestion')
 
 let replyCache = []  // { userMessage, adminReply, qualityScore, category, keywords[] }
+let recentReplies = [] // 管理员回复后立即加入，不等评估完成
 let initialized = false
 let refreshTimer = null
 
@@ -101,6 +102,27 @@ function getRandomGolden(count) {
 }
 
 /**
+ * 管理员回复后立即加入近期缓存（不等评估完成），用于 few-shot 示例
+ */
+function onAdminReply(doc) {
+  if (!doc.adminReply || doc.adminReply.trim().length < 10) return
+  const reply = doc.adminReply.trim()
+
+  // 去重
+  if (recentReplies.some(e => e.adminReply === reply)) return
+
+  recentReplies.unshift({
+    userMessage: doc.userMessage || '',
+    adminReply: reply,
+    keywords: extractKeywords((doc.userMessage || '') + ' ' + reply),
+    timestamp: new Date(),
+  })
+
+  // 保留最近 200 条
+  if (recentReplies.length > 200) recentReplies.pop()
+}
+
+/**
  * Called when a new evaluation completes — append to cache immediately
  */
 function onNewEvaluation(doc) {
@@ -129,6 +151,7 @@ function isReady() {
 module.exports = {
   initAdminReplyCache,
   findSimilarReplies,
+  onAdminReply,
   onNewEvaluation,
   isReady,
 }

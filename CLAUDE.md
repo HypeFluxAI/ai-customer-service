@@ -22,7 +22,8 @@ server/              Node.js 后端服务 (从 DeepLinkGame 移植)
   │   ├── knowledgebase.js  KB CRUD API
   │   ├── kakaoWebhook.js   KakaoTalk Bot Webhook
   │   ├── aiQuality.js     AI 质量分析 API
-  │   └── settings.js      管理员认证 + 系统设置
+  │   ├── settings.js      管理员认证 + 系统设置
+  │   └── qna.js           Q&A 常见问题 CRUD
   ├── services/      业务逻辑
   │   ├── aiSuggest.js      AI 建议生成 (ZenMux/Claude)
   │   ├── embedding.js      语义搜索 + 查询扩展
@@ -222,6 +223,7 @@ Gemini CLI 通过此 MCP Server 访问 MongoDB 全量数据:
 - `frequent_questions` — 高频未覆盖问题发掘
 
 ## 更新日志
+- 2026-03-17: 补全 QnA 路由 + onAdminReply 回调，DeepLinkGame 客服功能 100% 迁移完成
 - 2026-03-17: 集成 DeepLinkGame 管理后台 — Settings 路由/模型、AI Quality 别名、CORS、cookie-parser、去重 AI 建议
 - 2026-03-16: Web Terminal + MongoDB MCP Server — 训练员浏览器远程训练
 - 2026-03-16: 添加训练 API (server/routes/training.js) — Admin UI 对话训练

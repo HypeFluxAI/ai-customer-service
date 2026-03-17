@@ -9,6 +9,7 @@ const { broadcastToAdmins } = require('../realtime/chatRealtime');
 const crypto = require('crypto');
 const { AiSuggestion, calculateSimilarity } = require('../models/AiSuggestion');
 const { enqueueEvaluation } = require('../services/evaluateQuality');
+const { onAdminReply } = require('../services/adminReplyCache');
 const createRateLimiter = require('../middleware/rateLimit');
 
 // Debounce admin reply linking: collect consecutive admin messages before linking
@@ -294,6 +295,7 @@ router.post('/message/send', createRateLimiter('20-M'), async (req, res) => {
                             unlinked.similarity = calculateSimilarity(unlinked.suggestion, combined);
                             unlinked.linkedAt = new Date();
                             await unlinked.save();
+                            onAdminReply(unlinked);
                             enqueueEvaluation(unlinked._id);
                         }
                     } catch (linkErr) {
