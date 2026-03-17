@@ -189,10 +189,24 @@ function executeMcpTool(toolName, args) {
     const { execFile } = require('child_process')
     const mcpName = toolName.replace('mcp_', '')
 
-    // Determine which MCP server to call
-    const kbTools = ['kb_search', 'kb_teach', 'kb_correct', 'kb_add_document', 'kb_stats', 'kb_delete_source', 'kb_import_file']
-    const isKbTool = kbTools.includes(mcpName)
-    const script = isKbTool ? 'mcp/kb_server.py' : 'mcp/mongo_server.py'
+    // Route all tools to mongo_server.py (ChromaDB not available on server)
+    // Map kb_search→kb_list, kb_teach→kb_add for MongoDB fallback
+    let actualName = mcpName
+    if (mcpName === 'kb_search') {
+      // Convert search to kb_list with keyword filter
+      actualName = 'kb_list'
+      if (args.query) args.search = args.query
+    } else if (mcpName === 'kb_teach') {
+      // Convert teach to kb_add
+      actualName = 'kb_add'
+      if (args.question && args.answer) {
+        args.title = args.question
+        args.content = args.answer
+        args.keywords = [args.question]
+        args.language = args.language || 'ko'
+      }
+    }
+    const script = 'mcp/mongo_server.py'
     const cwd = process.env.HOME ? process.env.HOME + '/ai-customer-service' : '/home/dbc/ai-customer-service'
 
     // Send JSON-RPC request to MCP server via stdin
@@ -200,7 +214,7 @@ function executeMcpTool(toolName, args) {
       jsonrpc: '2.0',
       id: 1,
       method: 'tools/call',
-      params: { name: mcpName, arguments: args || {} },
+      params: { name: actualName, arguments: args || {} },
     }) + '\n'
 
     // First initialize, then call

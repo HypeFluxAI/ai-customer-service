@@ -411,11 +411,19 @@ def handle_kb_list(args: dict) -> str:
     active_only = args.get("active_only", True)
     source = args.get("source")
 
+    search = args.get("search")
     query = {"language": language}
     if active_only:
         query["isActive"] = True
     if source:
         query["source"] = source
+
+    # Text search if search keyword provided
+    if search:
+        try:
+            query["$text"] = {"$search": search}
+        except Exception:
+            pass
 
     entries = list(
         db.knowledge_bases
