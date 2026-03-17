@@ -52,6 +52,10 @@ function convertContents(contents, systemInstruction) {
     if (sysText) messages.push({ role: 'system', content: sysText })
   }
 
+  // Track tool call IDs so function responses can reference them
+  // Map: functionName → last tool_call_id
+  const toolCallIdMap = {}
+
   for (const content of contents || []) {
     const role = content.role === 'model' ? 'assistant' : 'user'
     const parts = content.parts || []
@@ -63,25 +67,31 @@ function convertContents(contents, systemInstruction) {
 
     if (funcCalls.length > 0) {
       // Assistant with tool calls
-      const msg = {
-        role: 'assistant',
-        content: textParts.map(p => p.text).join('') || null,
-        tool_calls: funcCalls.map((fc, i) => ({
-          id: `call_${i}_${Date.now()}`,
+      const toolCalls = funcCalls.map((fc, i) => {
+        const id = `call_${fc.functionCall.name}_${i}`
+        toolCallIdMap[fc.functionCall.name] = id
+        return {
+          id,
           type: 'function',
           function: {
             name: fc.functionCall.name,
             arguments: JSON.stringify(fc.functionCall.args || {}),
           },
-        })),
-      }
-      messages.push(msg)
+        }
+      })
+      messages.push({
+        role: 'assistant',
+        content: textParts.map(p => p.text).join('') || null,
+        tool_calls: toolCalls,
+      })
     } else if (funcResponses.length > 0) {
-      // Tool responses
+      // Tool responses — match to previous tool call IDs
       for (const fr of funcResponses) {
+        const name = fr.functionResponse.name || ''
+        const id = toolCallIdMap[name] || `call_${name}_0`
         messages.push({
           role: 'tool',
-          tool_call_id: `call_0_${Date.now()}`,
+          tool_call_id: id,
           content: JSON.stringify(fr.functionResponse.response || {}),
         })
       }
@@ -181,8 +191,11 @@ function convertResponse(openaiResp) {
   return resp
 }
 
+// Accumulator for streaming tool calls (they arrive in fragments)
+const streamToolCalls = new Map() // requestId → { index → {name, args} }
+
 /** OpenAI streaming chunk → Gemini SSE chunk */
-function convertStreamChunk(chunk) {
+function convertStreamChunk(chunk, requestId) {
   const choice = chunk.choices?.[0]
   if (!choice) return null
 
@@ -193,16 +206,39 @@ function convertStreamChunk(chunk) {
     parts.push({ text: delta.content })
   }
 
+  // Accumulate tool call fragments
   if (delta.tool_calls) {
+    if (!streamToolCalls.has(requestId)) {
+      streamToolCalls.set(requestId, {})
+    }
+    const acc = streamToolCalls.get(requestId)
+
     for (const tc of delta.tool_calls) {
-      if (tc.function?.name) {
-        parts.push({
-          functionCall: {
-            name: tc.function.name,
-            args: tc.function.arguments ? JSON.parse(tc.function.arguments) : {},
-          },
-        })
+      const idx = tc.index || 0
+      if (!acc[idx]) acc[idx] = { name: '', args: '' }
+      if (tc.function?.name) acc[idx].name = tc.function.name
+      if (tc.function?.arguments) acc[idx].args += tc.function.arguments
+    }
+  }
+
+  // On finish_reason=tool_calls, emit all accumulated tool calls
+  if (choice.finish_reason === 'tool_calls' || choice.finish_reason === 'stop') {
+    const acc = streamToolCalls.get(requestId)
+    if (acc) {
+      for (const idx of Object.keys(acc)) {
+        const tc = acc[idx]
+        if (tc.name) {
+          let args = {}
+          try { args = JSON.parse(tc.args || '{}') } catch { args = {} }
+          parts.push({
+            functionCall: {
+              name: tc.name,
+              args,
+            },
+          })
+        }
       }
+      streamToolCalls.delete(requestId)
     }
   }
 
@@ -297,6 +333,26 @@ const server = http.createServer(async (req, res) => {
 
   console.log(`[Proxy] ${parsed.method} model=${parsed.model} streaming=${isStreaming}`)
 
+  // Debug: log tools and contents summary
+  if (geminiBody.tools) {
+    const toolNames = []
+    for (const t of geminiBody.tools) {
+      if (t.functionDeclarations) {
+        for (const fd of t.functionDeclarations) toolNames.push(fd.name)
+      }
+    }
+    console.log(`[Proxy] Tools: ${toolNames.join(', ')}`)
+  }
+  if (geminiBody.contents) {
+    for (const c of geminiBody.contents) {
+      const parts = c.parts || []
+      for (const p of parts) {
+        if (p.functionCall) console.log(`[Proxy] FunctionCall: ${p.functionCall.name}(${JSON.stringify(p.functionCall.args).substring(0, 100)})`)
+        if (p.functionResponse) console.log(`[Proxy] FunctionResponse: ${p.functionResponse.name} -> ${JSON.stringify(p.functionResponse.response).substring(0, 100)}`)
+      }
+    }
+  }
+
   try {
     if (parsed.method === 'countTokens') {
       // Simple token count estimation
@@ -337,6 +393,7 @@ const server = http.createServer(async (req, res) => {
       })
 
       let buffer = ''
+      const reqId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
       upstream.on('data', (chunk) => {
         buffer += chunk.toString()
         const lines = buffer.split('\n')
@@ -346,7 +403,7 @@ const server = http.createServer(async (req, res) => {
           if (line.startsWith('data: ') && line.trim() !== 'data: [DONE]') {
             try {
               const openaiChunk = JSON.parse(line.slice(6))
-              const geminiChunk = convertStreamChunk(openaiChunk)
+              const geminiChunk = convertStreamChunk(openaiChunk, reqId)
               if (geminiChunk) {
                 res.write(`data: ${JSON.stringify(geminiChunk)}\n\n`)
               }

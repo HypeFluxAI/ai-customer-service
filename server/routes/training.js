@@ -14,11 +14,105 @@ const router = express.Router()
 const mongoose = require('mongoose')
 const { KnowledgeBase } = require('../models/KnowledgeBase')
 const QnA = require('../models/QnA')
+const { ChatMessage, ChatSession } = require('../models/Chat')
+const { AiSuggestion } = require('../models/AiSuggestion')
 const { generateSuggestion, findRelevantKnowledge, findRelevantQnA, buildSystemPrompt, buildContextMessages, resolveLanguage } = require('../services/aiSuggest')
 const embedding = require('../services/embedding')
 
 // 训练记录 Model (内存 + 可选持久化)
 const trainingHistory = []
+
+// ── 数据查询检测 + MongoDB 上下文构建 ─────────────────────
+const DATA_KEYWORDS = [
+  '몇 건', '몇건', '얼마나', '통계', '분석',
+  '어제', '오늘', '이번 주', '지난주', '최근',
+  '다少', '多少', '几条', '统计', '昨天', '今天', '本周', '上周', '最近',
+  'how many', 'yesterday', 'today', 'last week', 'this week', 'recent', 'statistics', 'stats',
+  'report', '보고서', '리포트', '报告',
+]
+
+function isDataQuestion(message) {
+  const lower = message.toLowerCase()
+  return DATA_KEYWORDS.some(kw => lower.includes(kw))
+}
+
+async function buildDataContext(message) {
+  const parts = []
+  const now = new Date()
+
+  try {
+    // Yesterday
+    const yesterdayStart = new Date(now)
+    yesterdayStart.setDate(yesterdayStart.getDate() - 1)
+    yesterdayStart.setHours(0, 0, 0, 0)
+    const yesterdayEnd = new Date(yesterdayStart)
+    yesterdayEnd.setHours(23, 59, 59, 999)
+
+    // Today
+    const todayStart = new Date(now)
+    todayStart.setHours(0, 0, 0, 0)
+
+    // Last 7 days
+    const weekStart = new Date(now)
+    weekStart.setDate(weekStart.getDate() - 7)
+
+    // Query stats
+    const [
+      yesterdayMsgs, yesterdayUserMsgs, yesterdaySessions,
+      todayMsgs, todayUserMsgs, todaySessions,
+      weekMsgs, weekUserMsgs, weekSessions,
+      totalKB, totalQnA, totalLearned,
+      aiSuggestionCount, linkedCount,
+    ] = await Promise.all([
+      ChatMessage.countDocuments({ timestamp: { $gte: yesterdayStart, $lte: yesterdayEnd } }).catch(() => 0),
+      ChatMessage.countDocuments({ timestamp: { $gte: yesterdayStart, $lte: yesterdayEnd }, sender: 'user' }).catch(() => 0),
+      ChatSession.countDocuments({ lastMessageTime: { $gte: yesterdayStart, $lte: yesterdayEnd } }).catch(() => 0),
+      ChatMessage.countDocuments({ timestamp: { $gte: todayStart } }).catch(() => 0),
+      ChatMessage.countDocuments({ timestamp: { $gte: todayStart }, sender: 'user' }).catch(() => 0),
+      ChatSession.countDocuments({ lastMessageTime: { $gte: todayStart } }).catch(() => 0),
+      ChatMessage.countDocuments({ timestamp: { $gte: weekStart } }).catch(() => 0),
+      ChatMessage.countDocuments({ timestamp: { $gte: weekStart }, sender: 'user' }).catch(() => 0),
+      ChatSession.countDocuments({ lastMessageTime: { $gte: weekStart } }).catch(() => 0),
+      KnowledgeBase.countDocuments({ isActive: true }).catch(() => 0),
+      QnA.countDocuments({ isActive: true }).catch(() => 0),
+      KnowledgeBase.countDocuments({ source: { $in: ['auto_learn', 'training_teach', 'training_correction'] }, isActive: true }).catch(() => 0),
+      AiSuggestion.countDocuments({ createdAt: { $gte: weekStart } }).catch(() => 0),
+      AiSuggestion.countDocuments({ adminReplyId: { $ne: null }, createdAt: { $gte: weekStart } }).catch(() => 0),
+    ])
+
+    parts.push('=== 실시간 데이터 (Real-time Data) ===')
+    parts.push(`어제 (${yesterdayStart.toISOString().split('T')[0]}):`)
+    parts.push(`  - 총 메시지: ${yesterdayMsgs}건 (사용자 문의: ${yesterdayUserMsgs}건)`)
+    parts.push(`  - 활성 세션: ${yesterdaySessions}개`)
+    parts.push(`오늘 (${todayStart.toISOString().split('T')[0]}):`)
+    parts.push(`  - 총 메시지: ${todayMsgs}건 (사용자 문의: ${todayUserMsgs}건)`)
+    parts.push(`  - 활성 세션: ${todaySessions}개`)
+    parts.push(`최근 7일:`)
+    parts.push(`  - 총 메시지: ${weekMsgs}건 (사용자 문의: ${weekUserMsgs}건)`)
+    parts.push(`  - 활성 세션: ${weekSessions}개`)
+    parts.push(`  - AI 건의: ${aiSuggestionCount}건 (관리자 채택: ${linkedCount}건)`)
+    parts.push(`지식베이스:`)
+    parts.push(`  - KB: ${totalKB}건, QnA: ${totalQnA}건, 자동학습: ${totalLearned}건`)
+
+    // Get recent user questions (last 20)
+    const recentQuestions = await ChatMessage.find({
+      sender: 'user',
+      timestamp: { $gte: yesterdayStart },
+    }).sort({ timestamp: -1 }).limit(20).select('text timestamp').lean().catch(() => [])
+
+    if (recentQuestions.length > 0) {
+      parts.push(`\n최근 사용자 질문 (${recentQuestions.length}건):`)
+      recentQuestions.forEach((q, i) => {
+        const time = new Date(q.timestamp).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
+        parts.push(`  ${i + 1}. [${time}] ${(q.text || '').substring(0, 80)}`)
+      })
+    }
+  } catch (err) {
+    parts.push(`데이터 조회 오류: ${err.message}`)
+  }
+
+  return parts.join('\n')
+}
 
 // ── 管理员认证中间件 ──────────────────────────────────────
 function requireAdmin(req, res, next) {

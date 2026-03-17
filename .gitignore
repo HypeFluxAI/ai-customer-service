@@ -13,3 +13,4 @@ node_modules/
 server/node_modules/
 data/uploads/
 data/training/
+.gstack/

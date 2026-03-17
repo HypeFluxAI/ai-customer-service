@@ -396,24 +396,19 @@
           termWrap.style.display = 'block';
           reconnectBanner.style.display = 'none';
           sessionStart = Date.now();
-          // Wait for DOM layout before initializing terminal
-          requestAnimationFrame(function() {
-            setTimeout(function() {
-              initTerminal();
-              // Send correct size after fit
-              if (ws && ws.readyState === WebSocket.OPEN && term) {
-                ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
-              }
-              term.focus();
-              // Re-fit again after Gemini CLI starts rendering
-              setTimeout(function() {
-                if (fitAddon) fitAddon.fit();
-                if (ws && ws.readyState === WebSocket.OPEN && term) {
-                  ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
-                }
-              }, 1000);
-            }, 50);
-          });
+          initTerminal();
+          // Send correct size multiple times to ensure PTY matches
+          function sendSize() {
+            if (fitAddon) fitAddon.fit();
+            if (ws && ws.readyState === WebSocket.OPEN && term) {
+              ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+            }
+          }
+          setTimeout(sendSize, 100);
+          setTimeout(sendSize, 500);
+          setTimeout(sendSize, 1500);
+          setTimeout(sendSize, 3000);
+          setTimeout(function() { if (term) term.focus(); }, 200);
           break;
 
         case 'auth_failed':
