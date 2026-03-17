@@ -385,7 +385,7 @@ function extractKeywords(text) {
 // ── POST /smart-chat — 直接调代理 (带 MCP 工具) ──────────
 router.post('/smart-chat', async (req, res) => {
   try {
-    const { message, language = 'ko' } = req.body
+    const { message, language = 'ko', history = [] } = req.body
     if (!message) {
       return res.status(400).json({ error: 'message is required' })
     }
@@ -393,9 +393,19 @@ router.post('/smart-chat', async (req, res) => {
     const https = require('https')
     const http = require('http')
 
+    // Build contents with conversation history
+    const contents = []
+    for (const h of history) {
+      contents.push({
+        role: h.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: h.content }],
+      })
+    }
+    contents.push({ role: 'user', parts: [{ text: message }] })
+
     // 调用本地代理 (gemini2openai.js on port 3002)
     const proxyBody = JSON.stringify({
-      contents: [{ role: 'user', parts: [{ text: message }] }],
+      contents,
       config: {
         maxOutputTokens: 2048,
         temperature: 0.3,

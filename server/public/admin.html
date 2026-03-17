@@ -2261,6 +2261,7 @@ table.data-table .truncate {
   var simpleSend = document.getElementById('simple-chat-send');
   var simpleLastQ = '';
   var simpleLastA = '';
+  var simpleHistory = []; // conversation history for context
 
   function addSimpleBubble(role, text, kbInfo) {
     // Remove empty state
@@ -2314,6 +2315,7 @@ table.data-table .truncate {
         data = await api('POST', '/api/training/smart-chat', {
           message: msg,
           language: document.getElementById('simple-chat-lang').value,
+          history: simpleHistory,
         });
       } catch (smartErr) {
         data = await api('POST', '/api/training/chat', {
@@ -2325,6 +2327,11 @@ table.data-table .truncate {
       if (el) el.remove();
       simpleLastA = data.reply;
       addSimpleBubble('ai', data.reply, data.kb);
+      // Store in history for context
+      simpleHistory.push({ role: 'user', content: msg });
+      simpleHistory.push({ role: 'assistant', content: data.reply });
+      // Keep last 20 messages
+      if (simpleHistory.length > 20) simpleHistory = simpleHistory.slice(-20);
     } catch (err) {
       var el = document.getElementById('simple-typing');
       if (el) el.remove();
