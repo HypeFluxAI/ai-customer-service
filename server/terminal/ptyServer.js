@@ -222,11 +222,9 @@ function initTerminalWebSocket(server) {
             return
           }
           ws._termAuthed = true
+          ws._termPendingSpawn = true // Wait for resize before spawning
           clearTimeout(authTimer)
           safeSend(ws, { type: 'auth_success' })
-
-          // Spawn the PTY immediately after auth
-          spawnPty(ws, pty)
           break
         }
 
@@ -253,14 +251,21 @@ function initTerminalWebSocket(server) {
         // ── resize ────────────────────────────────────────────
         case 'resize': {
           if (!ws._termAuthed) return
-          if (!ws._termPty) return
           const cols = parseInt(msg.cols, 10)
           const rows = parseInt(msg.rows, 10)
           if (
-            Number.isFinite(cols) && Number.isFinite(rows) &&
-            cols > 0 && cols <= 500 &&
-            rows > 0 && rows <= 200
-          ) {
+            !Number.isFinite(cols) || !Number.isFinite(rows) ||
+            cols < 1 || cols > 500 || rows < 1 || rows > 200
+          ) break
+
+          // First resize after auth → spawn PTY with correct size
+          if (ws._termPendingSpawn && !ws._termPty) {
+            ws._termPendingSpawn = false
+            spawnPty(ws, pty, cols, rows)
+            break
+          }
+
+          if (ws._termPty) {
             try {
               ws._termPty.resize(cols, rows)
             } catch {
@@ -277,7 +282,7 @@ function initTerminalWebSocket(server) {
   })
 
   // ── Spawn PTY helper ───────────────────────────────────────
-  function spawnPty(ws, pty) {
+  function spawnPty(ws, pty, initialCols, initialRows) {
     // Build the session id
     const sessionId = `term_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
     ws._termSessionId = sessionId
@@ -338,13 +343,15 @@ function initTerminalWebSocket(server) {
 
     let ptyProcess
     try {
+      // Use client's actual terminal size
       ptyProcess = pty.spawn(shell, args, {
         name: 'xterm-256color',
-        cols: 120,
-        rows: 30,
+        cols: initialCols || 80,
+        rows: initialRows || 24,
         cwd: PROJECT_ROOT,
         env,
       })
+      console.log(`[Terminal] PTY size: ${initialCols || 80}x${initialRows || 24}`)
     } catch (err) {
       console.error('[Terminal] Failed to spawn PTY:', err.message)
       safeSend(ws, { type: 'error', message: 'Failed to start terminal' })
