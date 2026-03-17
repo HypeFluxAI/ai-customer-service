@@ -867,12 +867,30 @@ table.data-table .truncate {
       </div>
     </div>
 
-    <!-- Tab 5: Terminal (opens in new window) -->
+    <!-- Tab 5: Simple Chat (for customer service staff) -->
     <div class="tab-pane" id="pane-terminal">
-      <div style="display:flex;align-items:center;justify-content:center;height:100%;flex-direction:column;gap:16px;">
-        <div style="color:#8888aa;font-size:14px;text-align:center;line-height:1.8;" data-i18n="terminal_desc">Gemini CLI 终端在独立窗口中运行效果最佳。<br>点击下方按钮打开终端窗口。</div>
-        <button id="btn-open-terminal" style="padding:12px 32px;background:#4361ee;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;" data-i18n="terminal_open_btn">🖥️ 打开终端窗口</button>
-        <div style="color:#555;font-size:12px;" data-i18n="terminal_hint">终端使用 Claude Opus 4.6 (通过 ZenMux API)</div>
+      <div style="display:flex;flex-direction:column;height:100%;max-width:900px;margin:0 auto;width:100%;">
+        <!-- Simple chat header -->
+        <div style="padding:12px 16px;border-bottom:1px solid #252540;display:flex;align-items:center;justify-content:space-between;">
+          <div>
+            <div style="font-size:15px;font-weight:600;color:#fff;" data-i18n="simple_chat_title">AI 客服助手</div>
+            <div style="font-size:12px;color:#8888aa;" data-i18n="simple_chat_subtitle">직접 질문하면 AI가 답변합니다. 답변이 틀리면 바로 교정하세요.</div>
+          </div>
+          <select id="simple-chat-lang" style="padding:4px 8px;background:#252540;color:#ccc;border:1px solid #333;border-radius:4px;font-size:12px;">
+            <option value="ko">한국어</option>
+            <option value="zh">中文</option>
+            <option value="en">English</option>
+          </select>
+        </div>
+        <!-- Chat messages -->
+        <div id="simple-chat-messages" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px;">
+          <div style="text-align:center;color:#555;padding:40px 0;font-size:13px;" data-i18n="simple_chat_empty">고객처럼 질문해보세요. AI가 지식베이스를 검색하여 답변합니다.</div>
+        </div>
+        <!-- Input bar -->
+        <div style="padding:12px 16px;border-top:1px solid #252540;display:flex;gap:8px;">
+          <input id="simple-chat-input" type="text" placeholder="질문을 입력하세요..." data-i18n-placeholder="simple_chat_placeholder" style="flex:1;padding:10px 14px;background:#252540;color:#e0e0e0;border:1px solid #333;border-radius:8px;font-size:14px;outline:none;" />
+          <button id="simple-chat-send" style="padding:10px 20px;background:#4361ee;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap;" data-i18n="simple_chat_send">전송</button>
+        </div>
       </div>
     </div>
   </div>
@@ -978,9 +996,14 @@ table.data-table .truncate {
       tab_kb: '\uD83D\uDD0D 지식베이스',
       tab_analytics: '\uD83D\uDCCA 분석 리포트',
       tab_terminal: '\uD83D\uDDA5\uFE0F 터미널',
-      terminal_desc: 'Gemini CLI 터미널은 독립 창에서 실행하면 최적의 환경을 제공합니다.<br>아래 버튼을 클릭하여 터미널 창을 열어주세요.',
-      terminal_open_btn: '\uD83D\uDDA5\uFE0F 터미널 창 열기',
-      terminal_hint: '터미널은 Claude Opus 4.6 을 사용합니다 (ZenMux API)',
+      simple_chat_title: 'AI 고객서비스 도우미',
+      simple_chat_subtitle: '직접 질문하면 AI가 답변합니다. 답변이 틀리면 바로 교정하세요.',
+      simple_chat_empty: '고객처럼 질문해보세요. AI가 지식베이스를 검색하여 답변합니다.',
+      simple_chat_placeholder: '질문을 입력하세요...',
+      simple_chat_send: '전송',
+      simple_chat_thinking: 'AI가 생각중...',
+      simple_chat_error: '오류 발생',
+      simple_chat_correct: '교정',
       // Chat Tab
       chat_empty: 'AI 고객서비스 훈련 채팅<br>고객처럼 질문하면 AI가 답변합니다<br><span style="color:#8888aa;font-size:12px;">답변을 교정하거나 새 지식을 가르칠 수 있습니다</span>',
       chat_placeholder: '고객 질문을 입력하세요...',
@@ -1127,9 +1150,14 @@ table.data-table .truncate {
       tab_kb: '\uD83D\uDD0D 知识库',
       tab_analytics: '\uD83D\uDCCA 分析报告',
       tab_terminal: '\uD83D\uDDA5\uFE0F 终端',
-      terminal_desc: 'Gemini CLI 终端在独立窗口中运行效果最佳。<br>点击下方按钮打开终端窗口。',
-      terminal_open_btn: '\uD83D\uDDA5\uFE0F 打开终端窗口',
-      terminal_hint: '终端使用 Claude Opus 4.6 (通过 ZenMux API)',
+      simple_chat_title: 'AI 客服助手',
+      simple_chat_subtitle: '直接提问，AI 会搜索知识库回答。答错了可以纠正。',
+      simple_chat_empty: '像客户一样提问试试，AI 会搜索知识库给出回答。',
+      simple_chat_placeholder: '输入问题...',
+      simple_chat_send: '发送',
+      simple_chat_thinking: 'AI 思考中...',
+      simple_chat_error: '出错了',
+      simple_chat_correct: '纠正',
       // Chat Tab
       chat_empty: 'AI 客服训练聊天<br>像客户一样提问，AI会回答<br><span style="color:#8888aa;font-size:12px;">可以纠正回复或教授新知识</span>',
       chat_placeholder: '输入消息...',
@@ -1276,9 +1304,14 @@ table.data-table .truncate {
       tab_kb: '\uD83D\uDD0D Knowledge Base',
       tab_analytics: '\uD83D\uDCCA Analytics',
       tab_terminal: '\uD83D\uDDA5\uFE0F Terminal',
-      terminal_desc: 'Gemini CLI terminal works best in a separate window.<br>Click the button below to open the terminal.',
-      terminal_open_btn: '\uD83D\uDDA5\uFE0F Open Terminal Window',
-      terminal_hint: 'Terminal uses Claude Opus 4.6 (via ZenMux API)',
+      simple_chat_title: 'AI Customer Service Assistant',
+      simple_chat_subtitle: 'Ask questions and AI will answer from the knowledge base. Correct wrong answers.',
+      simple_chat_empty: 'Ask a question like a customer. AI will search the knowledge base and respond.',
+      simple_chat_placeholder: 'Type your question...',
+      simple_chat_send: 'Send',
+      simple_chat_thinking: 'AI is thinking...',
+      simple_chat_error: 'Error',
+      simple_chat_correct: 'Correct',
       // Chat Tab
       chat_empty: 'AI Customer Service Training Chat<br>Ask questions like a customer, AI will respond<br><span style="color:#8888aa;font-size:12px;">You can correct replies or teach new knowledge</span>',
       chat_placeholder: 'Type a message...',
@@ -2222,10 +2255,98 @@ table.data-table .truncate {
   // ── Initialize language on page load ──
   setLang(currentLang);
 
-  // ── Terminal: open in new window ──
-  document.getElementById('btn-open-terminal').addEventListener('click', function() {
-    var url = '/terminal/terminal.html?token=' + encodeURIComponent(authToken);
-    window.open(url, 'gemini-terminal', 'width=1200,height=800,menubar=no,toolbar=no,status=no');
+  // ── Simple Chat (Tab 5) ──
+  var simpleMsgs = document.getElementById('simple-chat-messages');
+  var simpleInput = document.getElementById('simple-chat-input');
+  var simpleSend = document.getElementById('simple-chat-send');
+  var simpleLastQ = '';
+  var simpleLastA = '';
+
+  function addSimpleBubble(role, text, kbInfo) {
+    // Remove empty state
+    var empty = simpleMsgs.querySelector('[data-i18n="simple_chat_empty"]');
+    if (empty) empty.remove();
+
+    var bubble = document.createElement('div');
+    bubble.style.cssText = role === 'user'
+      ? 'align-self:flex-end;background:#4361ee;color:#fff;padding:10px 14px;border-radius:12px 12px 4px 12px;max-width:75%;font-size:14px;line-height:1.6;word-break:break-word;'
+      : 'align-self:flex-start;background:#252540;color:#e0e0e0;padding:10px 14px;border-radius:12px 12px 12px 4px;max-width:75%;font-size:14px;line-height:1.6;word-break:break-word;';
+    bubble.textContent = text;
+    simpleMsgs.appendChild(bubble);
+
+    // KB info + correct button for AI replies
+    if (role === 'ai' && kbInfo) {
+      var meta = document.createElement('div');
+      meta.style.cssText = 'align-self:flex-start;display:flex;gap:8px;align-items:center;font-size:11px;color:#666;padding:0 4px;';
+      var kbText = 'KB ' + (kbInfo.hits || 0) + ' ' + t('chat_kb_match');
+      if (kbInfo.titles && kbInfo.titles.length > 0) {
+        kbText += ': ' + kbInfo.titles.filter(function(t){return t;}).join(', ');
+      }
+      meta.innerHTML = '<span>' + escapeHtml(kbText) + '</span>' +
+        '<button onclick="simpleCorrect()" style="padding:2px 8px;background:transparent;color:#f2a93b;border:1px solid #f2a93b44;border-radius:4px;font-size:11px;cursor:pointer;">' + t('simple_chat_correct') + '</button>';
+      simpleMsgs.appendChild(meta);
+    }
+
+    simpleMsgs.scrollTop = simpleMsgs.scrollHeight;
+  }
+
+  async function sendSimpleChat() {
+    var msg = simpleInput.value.trim();
+    if (!msg) return;
+
+    simpleInput.value = '';
+    simpleSend.disabled = true;
+    addSimpleBubble('user', msg);
+    simpleLastQ = msg;
+
+    // Typing indicator
+    var typing = document.createElement('div');
+    typing.id = 'simple-typing';
+    typing.style.cssText = 'align-self:flex-start;color:#666;font-size:13px;padding:8px 0;';
+    typing.innerHTML = '<span class="spinner"></span> ' + t('simple_chat_thinking');
+    simpleMsgs.appendChild(typing);
+    simpleMsgs.scrollTop = simpleMsgs.scrollHeight;
+
+    try {
+      // Try Gemini CLI first (has MCP tools, Skills, Agent), fallback to Training API
+      var data;
+      try {
+        data = await api('POST', '/api/training/gemini-chat', {
+          message: msg,
+          language: document.getElementById('simple-chat-lang').value,
+        });
+      } catch (geminiErr) {
+        // Fallback to regular training API
+        data = await api('POST', '/api/training/chat', {
+          message: msg,
+          language: document.getElementById('simple-chat-lang').value,
+        });
+      }
+      var el = document.getElementById('simple-typing');
+      if (el) el.remove();
+      simpleLastA = data.reply;
+      addSimpleBubble('ai', data.reply, data.kb);
+    } catch (err) {
+      var el = document.getElementById('simple-typing');
+      if (el) el.remove();
+      addSimpleBubble('ai', t('simple_chat_error') + ': ' + err.message);
+    } finally {
+      simpleSend.disabled = false;
+      simpleInput.focus();
+    }
+  }
+
+  window.simpleCorrect = function() {
+    if (!simpleLastQ || !simpleLastA) return;
+    document.getElementById('correct-question-display').textContent = simpleLastQ;
+    document.getElementById('correct-wrong-display').textContent = simpleLastA;
+    document.getElementById('correct-answer-input').value = '';
+    openModal('modal-correct');
+  };
+
+  simpleSend.addEventListener('click', sendSimpleChat);
+  simpleInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendSimpleChat(); }
   });
 
 })();

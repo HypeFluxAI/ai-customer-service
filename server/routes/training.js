@@ -288,4 +288,79 @@ function extractKeywords(text) {
   return [...new Set(words)].slice(0, 10)
 }
 
+// ── POST /gemini-chat — 通过 Gemini CLI 对话 ──────────────
+router.post('/gemini-chat', async (req, res) => {
+  try {
+    const { message, language = 'ko' } = req.body
+    if (!message) {
+      return res.status(400).json({ error: 'message is required' })
+    }
+
+    const { execFile } = require('child_process')
+    const path = require('path')
+
+    // Gemini CLI wrapper script path
+    const wrapperPath = path.resolve(__dirname, '../../scripts/gemini-wrapper.sh')
+    const fs = require('fs')
+
+    if (!fs.existsSync(wrapperPath)) {
+      return res.status(501).json({ error: 'Gemini CLI not configured' })
+    }
+
+    // Run gemini -p in headless mode
+    const timeoutMs = 30000
+    const result = await new Promise((resolve, reject) => {
+      const child = execFile('bash', [wrapperPath, '-p', message], {
+        timeout: timeoutMs,
+        maxBuffer: 1024 * 1024,
+        env: Object.assign({}, process.env, {
+          PATH: (process.env.HOME || '/home/dbc') + '/node22/bin:' +
+                (process.env.HOME || '/home/dbc') + '/.npm-global/bin:' +
+                (process.env.PATH || ''),
+          GOOGLE_GEMINI_BASE_URL: process.env.GOOGLE_GEMINI_BASE_URL || 'http://localhost:3002',
+          GEMINI_API_KEY: process.env.GEMINI_API_KEY || 'proxy-mode',
+          TERM: 'dumb', // No TUI formatting
+        }),
+        cwd: path.resolve(__dirname, '../..'),
+      }, (err, stdout, stderr) => {
+        if (err && err.killed) {
+          reject(new Error('Gemini CLI timeout'))
+        } else if (err) {
+          // Still return stdout if available
+          resolve(stdout || stderr || err.message)
+        } else {
+          resolve(stdout)
+        }
+      })
+    })
+
+    // Clean ANSI escape codes and MCP error messages
+    let reply = result
+      .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '') // ANSI escapes
+      .replace(/\[MCP error\].*\n?/g, '')      // MCP errors
+      .replace(/MCP issues detected.*\n?/g, '') // MCP warnings
+      .replace(/Error during discovery.*\n?/g, '')
+      .trim()
+
+    if (!reply) {
+      return res.status(500).json({ error: 'No response from Gemini CLI' })
+    }
+
+    // Log training
+    trainingHistory.push({
+      type: 'chat',
+      question: message,
+      answer: reply,
+      source: 'gemini-cli',
+      language,
+      timestamp: new Date(),
+    })
+
+    res.json({ reply, source: 'gemini-cli' })
+  } catch (err) {
+    console.error('[Training] gemini-chat error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
 module.exports = router
