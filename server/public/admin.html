@@ -1050,6 +1050,10 @@ table.data-table .truncate {
       login_error_empty: '토큰을 입력하세요.',
       login_error_auth: '잘못된 토큰입니다.',
       login_error_server: '서버 연결 실패',
+      login_locked: '로그인 시도 횟수 초과. 5분 후 다시 시도하세요.',
+      login_locked_timer: '로그인 잠금 중... {time} 후 해제',
+      login_attempts_left: '남은 시도: {n}회',
+      login_unlocked: '잠금 해제되었습니다. 다시 시도하세요.',
       login_logging_in: '로그인 중...',
       // Top Bar
       logo: 'DeepLink AI 고객서비스 훈련센터',
@@ -1204,6 +1208,10 @@ table.data-table .truncate {
       login_error_empty: '请输入令牌。',
       login_error_auth: '令牌无效。',
       login_error_server: '服务器连接失败',
+      login_locked: '登录尝试次数过多，请5分钟后再试。',
+      login_locked_timer: '登录已锁定... {time} 后解锁',
+      login_attempts_left: '剩余尝试: {n}次',
+      login_unlocked: '已解锁，请重新尝试。',
       login_logging_in: '登录中...',
       // Top Bar
       logo: 'DeepLink AI 客服训练中心',
@@ -1358,6 +1366,10 @@ table.data-table .truncate {
       login_error_empty: 'Please enter a token.',
       login_error_auth: 'Invalid token.',
       login_error_server: 'Server connection failed',
+      login_locked: 'Too many failed attempts. Try again in 5 minutes.',
+      login_locked_timer: 'Login locked... unlocks in {time}',
+      login_attempts_left: '{n} attempts remaining',
+      login_unlocked: 'Unlocked. Please try again.',
       login_logging_in: 'Logging in...',
       // Top Bar
       logo: 'DeepLink AI CS Training Center',
@@ -1667,8 +1679,19 @@ table.data-table .truncate {
     if (confirmCallback) { confirmCallback(); confirmCallback = null; }
   });
 
-  // ── Login ──
+  // ── Login with rate limiting ──
+  var loginAttempts = 0;
+  var loginLocked = false;
+  var loginLockTimer = null;
+  var MAX_LOGIN_ATTEMPTS = 5;
+  var LOGIN_LOCK_SECONDS = 300; // 5 minutes
+
   async function tryLogin(token) {
+    if (loginLocked) {
+      loginError.textContent = t('login_locked');
+      return;
+    }
+
     loginBtn.disabled = true;
     loginBtn.innerHTML = '<span class="spinner"></span>' + t('login_logging_in');
     loginError.textContent = '';
@@ -1676,22 +1699,54 @@ table.data-table .truncate {
       authToken = token;
       await api('GET', '/api/training/stats');
       localStorage.setItem('admin_token', token);
+      loginAttempts = 0; // Reset on success
       loginOverlay.classList.add('hidden');
       appEl.classList.remove('hidden');
       connDot.classList.add('ok');
       connText.textContent = t('connected');
       loadDashboard();
     } catch (err) {
+      authToken = '';
+      localStorage.removeItem('admin_token');
+
       if (err.message === 'unauthorized') {
-        loginError.textContent = t('login_error_auth');
+        loginAttempts++;
+        var remaining = MAX_LOGIN_ATTEMPTS - loginAttempts;
+
+        if (remaining <= 0) {
+          // Lock login
+          loginLocked = true;
+          loginBtn.disabled = true;
+          var lockEnd = LOGIN_LOCK_SECONDS;
+          loginError.textContent = t('login_locked');
+
+          loginLockTimer = setInterval(function() {
+            lockEnd--;
+            if (lockEnd <= 0) {
+              clearInterval(loginLockTimer);
+              loginLocked = false;
+              loginAttempts = 0;
+              loginBtn.disabled = false;
+              loginBtn.textContent = t('login_btn');
+              loginError.textContent = t('login_unlocked');
+            } else {
+              var min = Math.floor(lockEnd / 60);
+              var sec = lockEnd % 60;
+              loginError.textContent = t('login_locked_timer').replace('{time}', min + ':' + String(sec).padStart(2, '0'));
+            }
+          }, 1000);
+          return;
+        } else {
+          loginError.textContent = t('login_error_auth') + ' (' + t('login_attempts_left').replace('{n}', remaining) + ')';
+        }
       } else {
         loginError.textContent = t('login_error_server') + ': ' + err.message;
       }
-      authToken = '';
-      localStorage.removeItem('admin_token');
     } finally {
-      loginBtn.disabled = false;
-      loginBtn.textContent = t('login_btn');
+      if (!loginLocked) {
+        loginBtn.disabled = false;
+        loginBtn.textContent = t('login_btn');
+      }
     }
   }
 
