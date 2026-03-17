@@ -2308,15 +2308,14 @@ table.data-table .truncate {
     simpleMsgs.scrollTop = simpleMsgs.scrollHeight;
 
     try {
-      // Try Gemini CLI first (has MCP tools, Skills, Agent), fallback to Training API
+      // Use smart-chat (proxy with MCP tools), fallback to training/chat
       var data;
       try {
-        data = await api('POST', '/api/training/gemini-chat', {
+        data = await api('POST', '/api/training/smart-chat', {
           message: msg,
           language: document.getElementById('simple-chat-lang').value,
         });
-      } catch (geminiErr) {
-        // Fallback to regular training API
+      } catch (smartErr) {
         data = await api('POST', '/api/training/chat', {
           message: msg,
           language: document.getElementById('simple-chat-lang').value,

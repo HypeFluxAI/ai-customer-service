@@ -382,6 +382,87 @@ function extractKeywords(text) {
   return [...new Set(words)].slice(0, 10)
 }
 
+// ── POST /smart-chat — 直接调代理 (带 MCP 工具) ──────────
+router.post('/smart-chat', async (req, res) => {
+  try {
+    const { message, language = 'ko' } = req.body
+    if (!message) {
+      return res.status(400).json({ error: 'message is required' })
+    }
+
+    const https = require('https')
+    const http = require('http')
+
+    // 调用本地代理 (gemini2openai.js on port 3002)
+    const proxyBody = JSON.stringify({
+      contents: [{ role: 'user', parts: [{ text: message }] }],
+      config: {
+        maxOutputTokens: 2048,
+        temperature: 0.3,
+        systemInstruction: `你是 DeepLink GPU 클라우드 서비스的客服训练助手。你有以下能力:
+1. 回答客服问题 (使用 mcp_kb_search 搜索知识库)
+2. 查询数据统计 (使用 mcp_chat_stats, mcp_chat_logs_query)
+3. 分析 AI 质量 (使用 mcp_ai_quality_report)
+4. 发现知识库缺口 (使用 mcp_frequent_questions)
+5. 管理知识库 (使用 mcp_kb_list, mcp_kb_add, mcp_kb_teach)
+
+请根据用户问题自动选择合适的工具。回答要简洁、准确。
+如果是数据类问题，先调用工具获取数据再回答。
+如果是客服类问题，先搜索知识库再回答。
+回答语言跟随用户使用的语言。`,
+      },
+    })
+
+    const result = await new Promise((resolve, reject) => {
+      const proxyReq = http.request({
+        hostname: '127.0.0.1',
+        port: 3002,
+        path: '/v1beta/models/claude:generateContent',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(proxyBody),
+        },
+        timeout: 45000,
+      }, (proxyRes) => {
+        proxyRes.setEncoding('utf8')
+        let data = ''
+        proxyRes.on('data', chunk => data += chunk)
+        proxyRes.on('end', () => resolve(data))
+      })
+      proxyReq.on('error', reject)
+      proxyReq.on('timeout', () => {
+        proxyReq.destroy()
+        reject(new Error('Proxy timeout'))
+      })
+      proxyReq.write(proxyBody)
+      proxyReq.end()
+    })
+
+    const geminiResp = JSON.parse(result)
+    const reply = geminiResp.candidates?.[0]?.content?.parts
+      ?.map(p => p.text || '').join('') || ''
+
+    if (!reply) {
+      return res.status(500).json({ error: 'No response' })
+    }
+
+    trainingHistory.push({
+      type: 'chat',
+      question: message,
+      answer: reply,
+      source: 'smart-proxy',
+      language,
+      timestamp: new Date(),
+    })
+
+    res.json({ reply, source: 'smart-proxy' })
+  } catch (err) {
+    console.error('[Training] smart-chat error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // ── POST /gemini-chat — 通过 Gemini CLI 对话 ──────────────
 router.post('/gemini-chat', async (req, res) => {
   try {
