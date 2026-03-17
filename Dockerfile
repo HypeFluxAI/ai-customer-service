@@ -7,7 +7,7 @@ RUN apk add --no-cache python3 py3-pip bash
 
 # Copy package files and install Node deps
 COPY server/package*.json ./server/
-RUN cd server && npm ci --production
+RUN cd server && npm ci --production --omit=optional
 
 # Copy Python deps and install
 COPY requirements.txt ./
