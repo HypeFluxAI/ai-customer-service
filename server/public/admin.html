@@ -554,12 +554,81 @@ table.data-table .truncate {
 .bar-label { font-size: 11px; color: #666; }
 .bar-value { font-size: 11px; color: #ccc; }
 
-/* ── Terminal Tab ── */
-.terminal-iframe-wrap {
-  flex: 1; overflow: hidden;
+/* ── Simple Chat Bubbles ── */
+.simple-bubble {
+  max-width: 85%; padding: 12px 16px;
+  border-radius: 12px; font-size: 14px;
+  line-height: 1.7; word-break: break-word;
+  animation: fadeIn 0.2s ease;
 }
-.terminal-iframe-wrap iframe {
-  width: 100%; height: 100%; border: none;
+.simple-bubble.user {
+  align-self: flex-end;
+  background: #4361ee; color: #fff;
+  border-bottom-right-radius: 4px;
+}
+.simple-bubble.ai {
+  align-self: flex-start;
+  background: #1a1a2e; color: #e0e0e0;
+  border: 1px solid #252540;
+  border-bottom-left-radius: 4px;
+  max-width: 90%;
+}
+.simple-bubble-meta {
+  align-self: flex-start;
+  display: flex; gap: 8px; align-items: center;
+  font-size: 11px; color: #666; padding: 2px 4px;
+}
+.simple-bubble-meta button {
+  padding: 2px 8px; background: transparent;
+  color: #f2a93b; border: 1px solid #f2a93b44;
+  border-radius: 4px; font-size: 11px; cursor: pointer;
+}
+.simple-bubble-meta button:hover { background: #f2a93b22; }
+
+/* ── Markdown Content (DeepSeek style) ── */
+.md-content { font-size: 14px; }
+.md-content h1 { font-size: 18px; font-weight: 700; color: #fff; margin: 16px 0 8px; padding-bottom: 6px; border-bottom: 1px solid #333; }
+.md-content h2 { font-size: 16px; font-weight: 700; color: #fff; margin: 14px 0 6px; }
+.md-content h3 { font-size: 15px; font-weight: 600; color: #e0e0e0; margin: 12px 0 4px; }
+.md-content h4 { font-size: 14px; font-weight: 600; color: #ccc; margin: 10px 0 4px; }
+.md-content p { margin: 6px 0; }
+.md-content strong { color: #fff; font-weight: 600; }
+.md-content em { color: #b0b0d0; }
+.md-content hr { border: none; border-top: 1px solid #333; margin: 12px 0; }
+.md-content ul, .md-content ol { margin: 6px 0; padding-left: 20px; }
+.md-content li { margin: 3px 0; }
+.md-content li::marker { color: #4361ee; }
+.md-content blockquote {
+  border-left: 3px solid #4361ee; padding: 6px 12px;
+  margin: 8px 0; color: #aaa; background: #16213e;
+  border-radius: 0 6px 6px 0;
+}
+.md-content table {
+  width: 100%; border-collapse: collapse; margin: 10px 0;
+  font-size: 13px;
+}
+.md-content table th {
+  background: #16213e; color: #b0b0d0; font-weight: 600;
+  padding: 8px 10px; text-align: left;
+  border-bottom: 2px solid #333;
+}
+.md-content table td {
+  padding: 6px 10px; border-bottom: 1px solid #252540;
+  color: #ddd;
+}
+.md-content table tr:hover td { background: #1a1a30; }
+.md-content pre {
+  background: #0f0f1a; border: 1px solid #333;
+  border-radius: 6px; padding: 10px 14px;
+  overflow-x: auto; margin: 8px 0;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 13px; line-height: 1.5;
+}
+.md-content code.inline-code {
+  background: #252540; color: #89ddff;
+  padding: 2px 5px; border-radius: 3px;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 13px;
 }
 
 /* ── Modals ── */
@@ -2263,28 +2332,88 @@ table.data-table .truncate {
   var simpleLastA = '';
   var simpleHistory = []; // conversation history for context
 
+  // Simple markdown → HTML renderer (no external library)
+  function renderMarkdown(text) {
+    if (!text) return '';
+    var html = escapeHtml(text);
+
+    // Code blocks ```...```
+    html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+    // Inline code
+    html = html.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
+    // Headers
+    html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
+    html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+    html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+    html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+    // Horizontal rules
+    html = html.replace(/^---+$/gm, '<hr>');
+    // Bold + italic
+    html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    // Tables
+    html = html.replace(/^(\|.+\|)\n(\|[-| :]+\|)\n((?:\|.+\|\n?)+)/gm, function(match, header, sep, body) {
+      var ths = header.split('|').filter(function(c){return c.trim();}).map(function(c){return '<th>'+c.trim()+'</th>';}).join('');
+      var rows = body.trim().split('\n').map(function(row) {
+        var tds = row.split('|').filter(function(c){return c.trim();}).map(function(c){return '<td>'+c.trim()+'</td>';}).join('');
+        return '<tr>' + tds + '</tr>';
+      }).join('');
+      return '<table><thead><tr>' + ths + '</tr></thead><tbody>' + rows + '</tbody></table>';
+    });
+    // Blockquotes
+    html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
+    // Unordered lists
+    html = html.replace(/^[\-\*] (.+)$/gm, '<li>$1</li>');
+    html = html.replace(/((?:<li>.*<\/li>\n?)+)/g, '<ul>$1</ul>');
+    // Ordered lists
+    html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+    // Line breaks (but not inside blocks)
+    html = html.replace(/\n\n/g, '</p><p>');
+    html = html.replace(/\n/g, '<br>');
+    html = '<p>' + html + '</p>';
+    // Clean up empty tags
+    html = html.replace(/<p>\s*<\/p>/g, '');
+    html = html.replace(/<p>\s*(<h[1-4]>)/g, '$1');
+    html = html.replace(/(<\/h[1-4]>)\s*<\/p>/g, '$1');
+    html = html.replace(/<p>\s*(<table>)/g, '$1');
+    html = html.replace(/(<\/table>)\s*<\/p>/g, '$1');
+    html = html.replace(/<p>\s*(<ul>)/g, '$1');
+    html = html.replace(/(<\/ul>)\s*<\/p>/g, '$1');
+    html = html.replace(/<p>\s*(<hr>)/g, '$1');
+    html = html.replace(/(<hr>)\s*<\/p>/g, '$1');
+    html = html.replace(/<p>\s*(<pre>)/g, '$1');
+    html = html.replace(/(<\/pre>)\s*<\/p>/g, '$1');
+    html = html.replace(/<p>\s*(<blockquote>)/g, '$1');
+    html = html.replace(/(<\/blockquote>)\s*<\/p>/g, '$1');
+    return html;
+  }
+
   function addSimpleBubble(role, text, kbInfo) {
     // Remove empty state
     var empty = simpleMsgs.querySelector('[data-i18n="simple_chat_empty"]');
     if (empty) empty.remove();
 
     var bubble = document.createElement('div');
-    bubble.style.cssText = role === 'user'
-      ? 'align-self:flex-end;background:#4361ee;color:#fff;padding:10px 14px;border-radius:12px 12px 4px 12px;max-width:75%;font-size:14px;line-height:1.6;word-break:break-word;'
-      : 'align-self:flex-start;background:#252540;color:#e0e0e0;padding:10px 14px;border-radius:12px 12px 12px 4px;max-width:75%;font-size:14px;line-height:1.6;word-break:break-word;';
-    bubble.textContent = text;
+    if (role === 'user') {
+      bubble.className = 'simple-bubble user';
+      bubble.textContent = text;
+    } else {
+      bubble.className = 'simple-bubble ai md-content';
+      bubble.innerHTML = renderMarkdown(text);
+    }
     simpleMsgs.appendChild(bubble);
 
     // KB info + correct button for AI replies
     if (role === 'ai' && kbInfo) {
       var meta = document.createElement('div');
-      meta.style.cssText = 'align-self:flex-start;display:flex;gap:8px;align-items:center;font-size:11px;color:#666;padding:0 4px;';
+      meta.className = 'simple-bubble-meta';
       var kbText = 'KB ' + (kbInfo.hits || 0) + ' ' + t('chat_kb_match');
       if (kbInfo.titles && kbInfo.titles.length > 0) {
         kbText += ': ' + kbInfo.titles.filter(function(t){return t;}).join(', ');
       }
       meta.innerHTML = '<span>' + escapeHtml(kbText) + '</span>' +
-        '<button onclick="simpleCorrect()" style="padding:2px 8px;background:transparent;color:#f2a93b;border:1px solid #f2a93b44;border-radius:4px;font-size:11px;cursor:pointer;">' + t('simple_chat_correct') + '</button>';
+        '<button onclick="simpleCorrect()">' + t('simple_chat_correct') + '</button>';
       simpleMsgs.appendChild(meta);
     }
 
