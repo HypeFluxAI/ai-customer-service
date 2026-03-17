@@ -76,6 +76,8 @@ metadata:
   name: ai-cs-ingress
   namespace: node-api
   annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/proxy-body-size: "10m"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
@@ -86,6 +88,10 @@ metadata:
       proxy_set_header Connection "upgrade";
 spec:
   ingressClassName: nginx
+  tls:
+    - hosts:
+        - cs.deeplink.cloud
+      secretName: ai-cs-tls
   rules:
     - host: cs.deeplink.cloud
       http:
