@@ -36,6 +36,14 @@ const ABBREV_MAP = {
   '메이플': '메이플스토리 메이플 스토리',
   '배그': '배틀그라운드 PUBG',
   '발로': '발로란트 VALORANT',
+  '서든': '서든어택 서든 어택',
+  '롤': '리그오브레전드 LOL',
+  '옵치': '오버워치 오버 워치',
+  '와우': '월드오브워크래프트 WOW',
+  '디아': '디아블로 diablo',
+  '카트': '카트라이더 카트 라이더',
+  '피파': '피파온라인 FC온라인',
+  '스타': '스타크래프트 starcraft',
   '피방': 'PC방 피씨방',
   '지방': 'PC방 피씨방 지피방',
   '지피방': 'PC방 피씨방',
@@ -50,6 +58,23 @@ const ABBREV_MAP = {
   '자리없': '만석 임대 불가 모두 임대 중',
   '빈자리': '여유기기 이용 가능 임대 가능',
   '대기시간': '대기 시간 얼마나 기다려야 임대 불가',
+  // 가격/결제 관련
+  '얼마': '가격 요금 비용 포인트',
+  '싼': '할인 가격 저렴 프로모션',
+  '충전': '포인트 충전 결제 구매',
+  '계좌': '계좌이체 은행 송금',
+  '카드': '카드결제 신용카드 체크카드',
+  '환불': '환불 반환 취소 포인트반환',
+  // 문제/오류 관련
+  '안됨': '오류 에러 안되 문제 해결',
+  '에러': '오류 에러 문제 해결',
+  '렉': '렉 지연 속도 느림 프레임',
+  '튕김': '튕김 크래시 강제종료 오류',
+  '화면': '화면 디스플레이 모니터 해상도',
+  // 서비스 관련
+  '원격': '원격 리모트 접속',
+  '사양': '스펙 사양 GPU CPU RTX',
+  '시간': '시간 포인트 이용시간 임대시간',
 }
 
 /**
@@ -121,7 +146,7 @@ function normalizeText(value) {
 function scoreKBEntry(entry, searchWords) {
   let score = 0
   const title = normalizeText(entry.title)
-  const content = normalizeText(cleanHtml(entry.contentHtml)).substring(0, 500)
+  const content = normalizeText(cleanHtml(entry.contentHtml)).substring(0, 1000)
   const keywords = (entry.keywords || []).map(k => normalizeText(k))
 
   for (const word of searchWords) {

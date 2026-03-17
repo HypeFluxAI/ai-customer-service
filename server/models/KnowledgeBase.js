@@ -5,7 +5,7 @@ const KnowledgeBaseSchema = new mongoose.Schema({
     title: { type: String, required: true },
     contentHtml: { type: String, required: true },
     keywords: { type: [String], default: [] },
-    source: { type: String, enum: ['manual', 'auto_learn'], default: 'manual' },
+    source: { type: String, enum: ['manual', 'auto_learn', 'qna_sync', 'admin_teach', 'admin_backfill'], default: 'manual' },
     embedding: { type: [Number], default: undefined, select: true },
     isActive: { type: Boolean, default: true },
     confidence: { type: Number, default: 1.0 },
@@ -21,9 +21,10 @@ const KnowledgeBaseSchema = new mongoose.Schema({
 KnowledgeBaseSchema.index({ language: 1, isActive: 1 });
 
 // Text index for full-text search (weights: title > keywords)
+// language_override 避免与 schema 中的 language 字段冲突
 KnowledgeBaseSchema.index(
     { title: 'text', keywords: 'text' },
-    { weights: { title: 3, keywords: 2 }, default_language: 'none' }
+    { weights: { title: 3, keywords: 2 }, default_language: 'none', language_override: 'textSearchLang' }
 );
 
 KnowledgeBaseSchema.pre('save', function () {
