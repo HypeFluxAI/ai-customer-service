@@ -41,6 +41,7 @@ const trainingRoutes = require('./routes/training')
 
 app.use('/api/chat', chatRoutes)
 app.use('/api/kb', kbRoutes)
+app.use('/api/knowledgebase', kbRoutes) // alias for DeepLinkGame admin frontend
 app.use('/api/kakao', kakaoWebhook)
 app.use('/api/ai-quality', aiQualityRoutes)
 app.use('/api/training', trainingRoutes)
