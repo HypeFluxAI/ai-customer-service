@@ -105,22 +105,159 @@ function convertContents(contents, systemInstruction) {
   return messages
 }
 
-/** Gemini tools[] → OpenAI tools[] */
-function convertTools(tools) {
-  if (!tools || tools.length === 0) return undefined
+// ── MCP 工具定义 (注入到每个请求) ──────────────────────────
+const MCP_TOOLS = [
+  {
+    type: 'function',
+    function: {
+      name: 'mcp_chat_stats',
+      description: '查询聊天统计数据。返回指定天数内的会话数、消息数、发送者分布、高峰时段等。',
+      parameters: { type: 'object', properties: { days: { type: 'integer', description: '查询天数 (默认 7)', default: 7 } } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'mcp_chat_logs_query',
+      description: '查询最近的聊天消息记录。可按关键词过滤。',
+      parameters: { type: 'object', properties: { days: { type: 'integer', default: 7 }, limit: { type: 'integer', default: 50 }, keyword: { type: 'string' } } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'mcp_kb_list',
+      description: '列出知识库条目。',
+      parameters: { type: 'object', properties: { language: { type: 'string', default: 'ko' }, active_only: { type: 'boolean', default: true } } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'mcp_kb_add',
+      description: '向知识库添加新条目。',
+      parameters: { type: 'object', properties: { title: { type: 'string' }, keywords: { type: 'array', items: { type: 'string' } }, content: { type: 'string' }, language: { type: 'string', default: 'ko' } }, required: ['title', 'content'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'mcp_qna_list',
+      description: '列出 Q&A 对。',
+      parameters: { type: 'object', properties: { language: { type: 'string', default: 'ko' } } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'mcp_ai_quality_report',
+      description: '生成 AI 建议质量分析报告。包含采纳率、相似度评分、品质分类统计。',
+      parameters: { type: 'object', properties: { days: { type: 'integer', default: 7 } } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'mcp_frequent_questions',
+      description: '分析高频问题，找出知识库未覆盖的常见客户提问。',
+      parameters: { type: 'object', properties: { days: { type: 'integer', default: 7 }, limit: { type: 'integer', default: 20 } } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'mcp_kb_search',
+      description: '搜索客服知识库（语义检索）。',
+      parameters: { type: 'object', properties: { query: { type: 'string' }, n_results: { type: 'integer', default: 5 } }, required: ['query'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'mcp_kb_teach',
+      description: '教客服系统新知识 (Q&A)。',
+      parameters: { type: 'object', properties: { question: { type: 'string' }, answer: { type: 'string' } }, required: ['question', 'answer'] },
+    },
+  },
+]
 
-  const result = []
-  for (const tool of tools) {
-    if (tool.functionDeclarations) {
-      for (const fd of tool.functionDeclarations) {
-        result.push({
-          type: 'function',
-          function: {
-            name: fd.name,
-            description: fd.description || '',
-            parameters: fd.parameters || { type: 'object', properties: {} },
-          },
-        })
+const MCP_TOOL_NAMES = new Set(MCP_TOOLS.map(t => t.function.name))
+
+/** Execute MCP tool by calling Python MCP server */
+function executeMcpTool(toolName, args) {
+  return new Promise((resolve) => {
+    const { execFile } = require('child_process')
+    const mcpName = toolName.replace('mcp_', '')
+
+    // Determine which MCP server to call
+    const kbTools = ['kb_search', 'kb_teach', 'kb_correct', 'kb_add_document', 'kb_stats', 'kb_delete_source', 'kb_import_file']
+    const isKbTool = kbTools.includes(mcpName)
+    const script = isKbTool ? 'mcp/kb_server.py' : 'mcp/mongo_server.py'
+    const cwd = process.env.HOME ? process.env.HOME + '/ai-customer-service' : '/home/dbc/ai-customer-service'
+
+    // Send JSON-RPC request to MCP server via stdin
+    const rpcRequest = JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: { name: mcpName, arguments: args || {} },
+    }) + '\n'
+
+    // First initialize, then call
+    const initRequest = JSON.stringify({
+      jsonrpc: '2.0',
+      id: 0,
+      method: 'initialize',
+      params: {},
+    }) + '\n'
+
+    const input = initRequest + rpcRequest
+
+    const child = execFile('python3', [script], {
+      cwd,
+      timeout: 15000,
+      maxBuffer: 1024 * 1024,
+    }, (err, stdout, stderr) => {
+      if (err) {
+        resolve(JSON.stringify({ error: err.message }))
+        return
+      }
+      // Parse last JSON line (tool result)
+      const lines = stdout.trim().split('\n').filter(l => l.startsWith('{'))
+      if (lines.length >= 2) {
+        try {
+          const result = JSON.parse(lines[lines.length - 1])
+          const content = result.result?.content?.[0]?.text || JSON.stringify(result.result || result)
+          resolve(content)
+        } catch {
+          resolve(stdout)
+        }
+      } else {
+        resolve(stdout || 'No result')
+      }
+    })
+    child.stdin.write(input)
+    child.stdin.end()
+  })
+}
+
+/** Gemini tools[] → OpenAI tools[] (+ inject MCP tools) */
+function convertTools(tools) {
+  const result = [...MCP_TOOLS] // Always include MCP tools
+
+  if (tools) {
+    for (const tool of tools) {
+      if (tool.functionDeclarations) {
+        for (const fd of tool.functionDeclarations) {
+          result.push({
+            type: 'function',
+            function: {
+              name: fd.name,
+              description: fd.description || '',
+              parameters: fd.parameters || { type: 'object', properties: {} },
+            },
+          })
+        }
       }
     }
   }
@@ -366,81 +503,104 @@ const server = http.createServer(async (req, res) => {
 
     // Convert Gemini request → OpenAI request
     const config = geminiBody.config || geminiBody.generationConfig || {}
-    const openaiBody = {
-      model: DEFAULT_MODEL,
-      messages: convertContents(
-        geminiBody.contents,
-        config.systemInstruction || geminiBody.systemInstruction
-      ),
-      max_tokens: config.maxOutputTokens || 4096,
-      temperature: config.temperature ?? 0.3,
-      stream: isStreaming,
-    }
-
-    // Convert tools
+    let messages = convertContents(
+      geminiBody.contents,
+      config.systemInstruction || geminiBody.systemInstruction
+    )
     const tools = convertTools(geminiBody.tools)
-    if (tools) openaiBody.tools = tools
+    const maxTokens = config.maxOutputTokens || 4096
+    const temperature = config.temperature ?? 0.3
 
-    // Forward to ZenMux
-    const upstream = await forwardToZenMux('/chat/completions', openaiBody, isStreaming)
+    // ── MCP Tool Call Loop ──
+    // Keep calling Claude until it stops requesting MCP tools
+    let maxLoops = 5
+    while (maxLoops-- > 0) {
+      const openaiBody = {
+        model: DEFAULT_MODEL,
+        messages,
+        max_tokens: maxTokens,
+        temperature,
+        stream: false, // Always non-streaming for tool loop
+      }
+      if (tools) openaiBody.tools = tools
 
-    if (isStreaming) {
-      // SSE streaming
-      res.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        Connection: 'keep-alive',
-      })
+      const loopResp = await forwardToZenMux('/chat/completions', openaiBody, false)
+      let loopBody = ''
+      for await (const chunk of loopResp) loopBody += chunk
+      const loopData = JSON.parse(loopBody)
 
-      let buffer = ''
-      const reqId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
-      upstream.on('data', (chunk) => {
-        buffer += chunk.toString()
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-
-        for (const line of lines) {
-          if (line.startsWith('data: ') && line.trim() !== 'data: [DONE]') {
-            try {
-              const openaiChunk = JSON.parse(line.slice(6))
-              const geminiChunk = convertStreamChunk(openaiChunk, reqId)
-              if (geminiChunk) {
-                res.write(`data: ${JSON.stringify(geminiChunk)}\n\n`)
-              }
-            } catch {
-              // skip parse errors
-            }
-          }
-        }
-      })
-
-      upstream.on('end', () => {
-        // Gemini SDK doesn't expect [DONE], just close the stream
-        res.end()
-      })
-
-      upstream.on('error', (err) => {
-        console.error('[Proxy] Stream error:', err.message)
-        res.end()
-      })
-    } else {
-      // Non-streaming
-      let respBody = ''
-      for await (const chunk of upstream) respBody += chunk
-
-      const openaiResp = JSON.parse(respBody)
-
-      if (upstream.statusCode !== 200) {
-        console.error('[Proxy] ZenMux error:', upstream.statusCode, respBody.substring(0, 200))
-        res.writeHead(upstream.statusCode, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify({ error: { message: openaiResp.error?.message || 'API error' } }))
+      if (loopResp.statusCode !== 200) {
+        // API error — break and return
+        const geminiResp = { candidates: [{ content: { role: 'model', parts: [{ text: loopData.error?.message || 'API error' }] }, finishReason: 'STOP' }] }
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify(geminiResp))
         return
       }
 
-      const geminiResp = convertResponse(openaiResp)
-      res.writeHead(200, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify(geminiResp))
+      const choice = loopData.choices?.[0]
+      if (!choice) break
+
+      // Check if Claude wants to call MCP tools
+      const toolCalls = choice.message?.tool_calls || []
+      const mcpCalls = toolCalls.filter(tc => MCP_TOOL_NAMES.has(tc.function?.name))
+
+      if (mcpCalls.length === 0) {
+        // No MCP tool calls — this is the final response
+        // If streaming was requested, convert and stream; otherwise return directly
+        if (isStreaming) {
+          // Convert non-streaming response to SSE format
+          const geminiResp = convertResponse(loopData)
+          res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' })
+          res.write(`data: ${JSON.stringify(geminiResp)}\n\n`)
+          res.end()
+        } else {
+          const geminiResp = convertResponse(loopData)
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify(geminiResp))
+        }
+        return
+      }
+
+      // Execute MCP tool calls
+      console.log(`[Proxy] Executing ${mcpCalls.length} MCP tool call(s): ${mcpCalls.map(tc => tc.function.name).join(', ')}`)
+
+      // Add assistant message with tool calls to conversation
+      messages.push({
+        role: 'assistant',
+        content: choice.message.content || null,
+        tool_calls: toolCalls.map(tc => ({
+          id: tc.id,
+          type: 'function',
+          function: { name: tc.function.name, arguments: tc.function.arguments },
+        })),
+      })
+
+      // Execute each tool call and add results
+      for (const tc of toolCalls) {
+        let result
+        if (MCP_TOOL_NAMES.has(tc.function.name)) {
+          const args = JSON.parse(tc.function.arguments || '{}')
+          result = await executeMcpTool(tc.function.name, args)
+          console.log(`[Proxy] MCP result (${tc.function.name}): ${result.substring(0, 200)}...`)
+        } else {
+          // Non-MCP tool — return error (Gemini CLI should handle these)
+          result = JSON.stringify({ error: `Tool ${tc.function.name} is not an MCP tool` })
+        }
+        messages.push({
+          role: 'tool',
+          tool_call_id: tc.id,
+          content: result,
+        })
+      }
+      // Loop back to get Claude's response with tool results
     }
+
+    // Fallback if loop exhausted
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({ candidates: [{ content: { role: 'model', parts: [{ text: 'Tool call loop exhausted' }] }, finishReason: 'STOP' }] }))
+    return
+
+    // (old streaming path removed — MCP tool loop handles all cases above)
   } catch (err) {
     console.error('[Proxy] Error:', err.message)
     res.writeHead(500, { 'Content-Type': 'application/json' })
