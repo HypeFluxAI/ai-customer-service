@@ -16,6 +16,7 @@ require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') }
 
 const express = require('express')
 const cors = require('cors')
+const cookieParser = require('cookie-parser')
 const http = require('http')
 const mongoose = require('mongoose')
 const path = require('path')
@@ -24,7 +25,16 @@ const app = express()
 const server = http.createServer(app)
 
 // ── Middleware ───────────────────────────────────────────────
-app.use(cors())
+app.use(cors({
+  origin: [
+    'https://admin.deeplink.cloud',
+    'https://deeplinkgame.com',
+    'https://www.deeplinkgame.com',
+    /https?:\/\/localhost(:\d+)?$/,
+  ],
+  credentials: true,
+}))
+app.use(cookieParser())
 app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true }))
 
@@ -38,13 +48,16 @@ const kbRoutes = require('./routes/knowledgebase')
 const kakaoWebhook = require('./routes/kakaoWebhook')
 const aiQualityRoutes = require('./routes/aiQuality')
 const trainingRoutes = require('./routes/training')
+const settingsRoutes = require('./routes/settings')
 
 app.use('/api/chat', chatRoutes)
 app.use('/api/kb', kbRoutes)
 app.use('/api/knowledgebase', kbRoutes) // alias for DeepLinkGame admin frontend
 app.use('/api/kakao', kakaoWebhook)
 app.use('/api/ai-quality', aiQualityRoutes)
+app.use('/api/chat/ai-quality', aiQualityRoutes) // alias: 前端期望的路径
 app.use('/api/training', trainingRoutes)
+app.use('/api/settings', settingsRoutes)
 
 // 健康检查
 app.get('/api/health', (req, res) => {

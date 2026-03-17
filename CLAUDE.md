@@ -15,12 +15,14 @@ server/              Node.js 后端服务 (从 DeepLinkGame 移植)
   │   ├── Chat.js        聊天消息 + 会话
   │   ├── KnowledgeBase.js  知识库条目
   │   ├── QnA.js         Q&A 对 (韩/中/英)
-  │   └── AiSuggestion.js  AI 建议 + 相似度追踪
+  │   ├── AiSuggestion.js  AI 建议 + 相似度追踪
+  │   └── Settings.js    管理员/站点配置/通知
   ├── routes/        API 路由
   │   ├── chat.js        聊天 API (消息/会话/图片上传)
   │   ├── knowledgebase.js  KB CRUD API
   │   ├── kakaoWebhook.js   KakaoTalk Bot Webhook
-  │   └── aiQuality.js     AI 质量分析 API
+  │   ├── aiQuality.js     AI 质量分析 API
+  │   └── settings.js      管理员认证 + 系统设置
   ├── services/      业务逻辑
   │   ├── aiSuggest.js      AI 建议生成 (ZenMux/Claude)
   │   ├── embedding.js      语义搜索 + 查询扩展
@@ -137,6 +139,9 @@ gemini                           # 在项目目录启动 Gemini CLI
 - `POST /api/kb` — 添加 KB 条目
 - `POST /api/kakao/webhook` — KakaoTalk Bot
 - `GET /api/ai-quality/stats` — AI 质量统计
+- `GET /api/chat/ai-quality/stats` — AI 质量统计 (DeepLinkGame 前端别名)
+- `POST /api/settings/admin/login` — 管理员登录
+- `GET /api/settings/system` — 系统信息
 - `WebSocket /ws/chat` — 管理员实时面板
 
 ### 训练 API (管理员)
@@ -217,6 +222,7 @@ Gemini CLI 通过此 MCP Server 访问 MongoDB 全量数据:
 - `frequent_questions` — 高频未覆盖问题发掘
 
 ## 更新日志
+- 2026-03-17: 集成 DeepLinkGame 管理后台 — Settings 路由/模型、AI Quality 别名、CORS、cookie-parser、去重 AI 建议
 - 2026-03-16: Web Terminal + MongoDB MCP Server — 训练员浏览器远程训练
 - 2026-03-16: 添加训练 API (server/routes/training.js) — Admin UI 对话训练
 - 2026-03-16: 重构项目结构 — 服务端/桌面端分离 (desktop/)

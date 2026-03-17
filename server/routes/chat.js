@@ -7,7 +7,6 @@ const { ChatSession, ChatMessage } = require('../models/Chat');
 const { KnowledgeBase } = require('../models/KnowledgeBase');
 const { broadcastToAdmins } = require('../realtime/chatRealtime');
 const crypto = require('crypto');
-const { generateSuggestion } = require('../services/aiSuggest');
 const { AiSuggestion, calculateSimilarity } = require('../models/AiSuggestion');
 const { enqueueEvaluation } = require('../services/evaluateQuality');
 const createRateLimiter = require('../middleware/rateLimit');
@@ -314,34 +313,7 @@ router.post('/message/send', createRateLimiter('20-M'), async (req, res) => {
             broadcastToAdmins({ type: 'session_update', session: updatedSession });
         }
 
-        if (sender === 'user') {
-            // Async AI suggestion — does not block the response, admin-only reference
-            if (process.env.ZENMUX_API_KEY) {
-                generateSuggestion(sessionId, text, session.language, req.body.imageUrl)
-                    .then(async (suggestion) => {
-                        if (suggestion) {
-                            try {
-                                await AiSuggestion.create({
-                                    sessionId,
-                                    userMessageId: message._id,
-                                    userMessage: text,
-                                    suggestion,
-                                    language: session.language || 'ko',
-                                });
-                            } catch (saveErr) {
-                                console.error('[AI Quality] save error:', saveErr.message);
-                            }
-                            broadcastToAdmins({
-                                type: 'ai_suggestion',
-                                sessionId,
-                                suggestion,
-                                messageId: message._id.toString(),
-                            });
-                        }
-                    })
-                    .catch(err => console.error('[AI] suggestion error:', err.message));
-            }
-        }
+        // AI 建议由 aiSuggestWatcher (Change Stream) 统一生成，此处不再重复触发
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
     }
