@@ -76,6 +76,7 @@ const { initAdminReplyCache } = require('./services/adminReplyCache')
 const { initAdminStyleProfile } = require('./services/adminStyleProfile')
 const { initOperationalContext } = require('./services/operationalContext')
 const { initKbLifecycle } = require('./services/kbLifecycle')
+const { startWatcher: startAiWatcher } = require('./services/aiSuggestWatcher')
 
 // ── MongoDB + Start ─────────────────────────────────────────
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/ai-customer-service'
@@ -119,6 +120,14 @@ mongoose.connect(MONGO_URI)
       console.log('[KbLifecycle] Initialized')
     } catch (e) {
       console.warn('[KbLifecycle] Init warning:', e.message)
+    }
+
+    // 启动 AI 建议自动生成（监听新消息）
+    try {
+      startAiWatcher()
+      console.log('[AI Watcher] Started - monitoring new user messages')
+    } catch (e) {
+      console.warn('[AI Watcher] Init warning:', e.message)
     }
 
     // 启动 HTTP + WebSocket
