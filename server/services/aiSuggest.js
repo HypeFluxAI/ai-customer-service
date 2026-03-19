@@ -264,6 +264,15 @@ async function generateSuggestion(sessionId, userMessage, language, imageUrl, ti
 
   const lang = resolveLanguage(language)
 
+  // ★ 直接匹配: 管理员对同样的问题回复过，直接复用（不走 LLM）
+  if (userMessage && adminReplyCache.isReady()) {
+    const directMatch = adminReplyCache.findDirectMatch(userMessage)
+    if (directMatch && directMatch.confidence >= 0.85) {
+      console.log(`[AI Suggest] Direct match (confidence=${directMatch.confidence.toFixed(2)}): "${userMessage.substring(0, 30)}..."`)
+      return directMatch.reply
+    }
+  }
+
   // Fetch context: use embedding search if available, fallback to keyword
   let kbEntries, qnaEntries
   const [recentMessages] = await Promise.all([
@@ -295,6 +304,19 @@ async function generateSuggestion(sessionId, userMessage, language, imageUrl, ti
     })
   }
 
+  // ★ 중간 매칭: 관리원 답변이 있으면 "이 답변을 기반으로" 지시
+  let hasStrongGuide = false
+  if (userMessage && adminReplyCache.isReady()) {
+    const directMatch = adminReplyCache.findDirectMatch(userMessage)
+    if (directMatch && directMatch.confidence >= 0.7) {
+      llmMessages.push({
+        role: 'system',
+        content: `★★★ 기존 상담원 답변이 있습니다. 이 답변의 의미와 내용을 그대로 유지하고, 말투만 상황에 맞게 미세 조정하세요 ★★★\n\n기존 답변: "${directMatch.reply}"`,
+      })
+      hasStrongGuide = true
+    }
+  }
+
   // Inject few-shot examples from admin reply history
   if (adminReplyCache.isReady()) {
     const fewShot = adminReplyCache.findSimilarReplies(userMessage || '', lang, 5)
@@ -304,7 +326,9 @@ async function generateSuggestion(sessionId, userMessage, language, imageUrl, ti
       ).join('\n\n')
       llmMessages.push({
         role: 'system',
-        content: `=== 상담원 답변 예시 (이 말투와 길이를 따라하세요) ===\n\n${examples}`,
+        content: hasStrongGuide
+          ? `=== 참고 예시 (말투 참조용) ===\n\n${examples}`
+          : `=== 상담원 답변 예시 (이 말투와 길이를 따라하세요) ===\n\n${examples}`,
       })
     }
   }

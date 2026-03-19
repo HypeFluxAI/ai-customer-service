@@ -47,6 +47,70 @@ async function loadCache() {
 }
 
 /**
+ * 查找与用户问题高度匹配的管理员历史回复（直接复用，不走 LLM 自由生成）
+ * 返回: { match: true, reply: '...', confidence: 0.9 } 或 null
+ */
+function findDirectMatch(userMessage) {
+  if (!userMessage) return null
+  const queryNorm = normalizeText(userMessage)
+  if (!queryNorm || queryNorm.length < 3) return null
+
+  const queryKeywords = extractKeywords(userMessage)
+  if (queryKeywords.length === 0) return null
+
+  const allEntries = [
+    ...replyCache,
+    ...recentReplies.map(e => ({ ...e, qualityScore: 60, category: 'recent' })),
+  ]
+
+  let bestMatch = null
+  let bestScore = 0
+
+  for (const entry of allEntries) {
+    if (!entry.adminReply || entry.adminReply.length < 10) continue
+    if (!entry.userMessage) continue
+
+    const entryNorm = normalizeText(entry.userMessage)
+    if (!entryNorm) continue
+
+    // 精确匹配: 归一化后完全相同
+    if (queryNorm === entryNorm) {
+      return { match: true, reply: entry.adminReply, confidence: 1.0, source: 'exact' }
+    }
+
+    // 高相似度匹配: 关键词覆盖率
+    const entryKeywords = extractKeywords(entry.userMessage)
+    if (entryKeywords.length === 0) continue
+
+    // 计算双向覆盖率
+    const queryHits = queryKeywords.filter(qw =>
+      entryKeywords.some(ew => ew === qw || (ew.length >= 3 && qw.length >= 3 && (ew.includes(qw) || qw.includes(ew))))
+    ).length
+    const entryHits = entryKeywords.filter(ew =>
+      queryKeywords.some(qw => ew === qw || (ew.length >= 3 && qw.length >= 3 && (ew.includes(qw) || qw.includes(ew))))
+    ).length
+
+    const queryCoverage = queryKeywords.length > 0 ? queryHits / queryKeywords.length : 0
+    const entryCoverage = entryKeywords.length > 0 ? entryHits / entryKeywords.length : 0
+    const coverage = (queryCoverage + entryCoverage) / 2
+
+    // 高质量回复额外加分
+    let qualityBoost = 0
+    if (entry.qualityScore >= 70) qualityBoost = 0.05
+    if (entry.category === 'no_learn') qualityBoost += 0.05 // AI 本来就对的，说明管理员认可
+
+    const score = coverage + qualityBoost
+
+    if (score > bestScore && score >= 0.7) {
+      bestScore = score
+      bestMatch = { match: true, reply: entry.adminReply, confidence: Math.min(score, 1.0), source: 'similar' }
+    }
+  }
+
+  return bestMatch
+}
+
+/**
  * Find similar admin replies for few-shot examples
  * 合并 replyCache（评估后）+ recentReplies（即时），过滤低质量
  */
@@ -167,6 +231,7 @@ function isReady() {
 
 module.exports = {
   initAdminReplyCache,
+  findDirectMatch,
   findSimilarReplies,
   onAdminReply,
   onNewEvaluation,
