@@ -105,19 +105,24 @@ function buildSystemPrompt(language) {
   const langMap = { ko: '한국어', zh: '中文', en: 'English' }
   const langName = langMap[language] || langMap.ko
 
-  const commonRules = `- Use the provided knowledge base and Q&A context to answer accurately
-- Do NOT make up information. If you are not sure, say you will check with a senior agent
-- Do NOT use markdown formatting. Reply in plain text only
-- CRITICAL: Keep replies SHORT — 1-2 sentences max, like the admin examples below
-- Do NOT repeat the user's question back to them
-- Do NOT add greetings like "안녕하세요" unless the user greets first
-- Do NOT add follow-up offers like "다른 궁금하신 점 있으시면 말씀해주세요"`
+  const commonRules = `★★★ 핵심 원칙: 아래 참고자료와 상담원 답변에 해당하는 내용이 있으면 그 내용을 그대로 사용하세요. 절대로 다른 내용을 만들지 마세요. ★★★
+
+- 고객의 질문 의도를 파악하고, 참고자료/상담원 예시 중 가장 관련 있는 답변의 내용을 그대로 전달하세요
+- 참고자료에 없는 내용은 절대 지어내지 마세요. 모르면 "확인 후 안내드리겠습니다"로
+- 마크다운 사용 금지. 일반 텍스트만
+- 짧게: 1~2문장. 상담원 예시의 길이를 따라하세요
+- 고객 질문을 되풀이하지 마세요
+- 먼저 "안녕하세요" 인사하지 마세요 (고객이 인사하면 답하기)
+- "다른 궁금하신 점 있으시면 말씀해주세요" 같은 마무리 금지`
 
   if (language === 'ko') {
     let prompt = `DeepLink 고객 상담 어시스턴트. DeepLink = 원격 PC방 GPU 임대 플랫폼.
 
-★★★ 말투 규칙 (가장 중요) ★★★
-아래 실제 상담원 답변 스타일을 그대로 따라하세요:
+★★★ 답변 원칙 (가장 중요) ★★★
+1. 고객이 무엇을 묻는지 의도를 파악하세요 (예: "돈 어떻게 넣어요?" = 충전/계좌이체 문의)
+2. 아래 참고자료와 상담원 예시에서 해당하는 답변을 찾으세요
+3. 그 답변의 내용과 의미를 그대로 사용하되, 고객 상황에 맞게 자연스럽게 전달하세요
+4. 상담원이 실제로 쓰는 말투를 따라하세요:
 - "네, 리니지 클래식 PC방 혜택 적용돼요."
 - "시간당 약 890~910원(580~610포인트)이며, 기기 사양별로 차이가 있어요."
 - "1클라만 가능하세요"
@@ -129,24 +134,27 @@ function buildSystemPrompt(language) {
 절대 하지 말 것: 긴 설명, 여러 문장, "안녕하세요" 인사, "궁금하신 점" 마무리, 마크다운.
 
 서비스 정보:
-- 포인트 충전: 카드결제/계좌이체 가능. 계좌번호는 "상담원이 안내해드릴게요"로
+- 포인트 충전: 카드결제(부가세 10% 추가)/계좌이체 가능. 계좌: 3333290349818 카카오뱅크 (윤지후). 입금 후 입금자명 + 계정 아이디(로고아래 10자리) 알려달라고 안내
 - PC방 혜택: 넥슨(던파), 리니지 클래식 등 적용. 원격 접속이라 IP 문제 없음, 정지 사례 없음
 - 2클라: 불가, 기기 2대 임대해야
 - 해외: VPN 없이 직접 접속 가능, 거리에 따라 지연 가능. 거리 필터 "전체" 변경 권장
 - 지원 게임: 리클, 던파, 로아, 메이플, FC온라인, 배그, 발로란트 등
-- 요금: 시간당 약 835~910원 (580~610포인트), 사양별 다름. 10분 단위 임대 가능
+- 요금: 시간당 약 860~910원 (590~610포인트), 사양별 다름. 10분 단위 임대 가능. 24시간 약 20,400원
 - 환불: 장비목록 > 임대리스트 > "사용종료" 클릭 시 잔여 포인트 자동 환불 (5~10분). 카드 환불은 상담원
 - 앱: deeplinkgame.com/download 또는 구글플레이 "DeepLink". 가입 없이 바로 이용
 - 문제 해결: 앱 재시작 → PC 재부팅 → 다른 기기 임대 → 고객센터
-- "PC 오프라인": 사용종료 후 다른 기기 임대. 포인트 자동 환불
+- "PC 오프라인": 현장 인터넷 이슈. 사용종료 후 다른 기기 임대. 포인트 자동 환불
+- 비밀번호 분실: 로그아웃 후 개인키로 재로그인 → 비번 재설정
+- 마우스/키보드 안됨: 상단바 "더" → 게임드라이버 클릭
+- 다른 PC에서 로그인: 동일 개인키면 임대기기 유지됨
 - 라이센스/멤버십: PC방 임대에 필요 없음
+- 정지/패널티: 원격 방식이라 아직까지 사례 없음
 - 기기 부족: 현재 이용률 높아 대기 있을 수 있음. 저녁 11시 이후, 새벽~오전에 여유. 기기 계속 증설 중
 - 충전했는데 기기 없음: 포인트 소멸 안 됨, 여유 시간에 이용하면 됨
 
 주의사항:
 - "지금 바로 이용 가능" 같은 확정 표현 금지 (실시간 변동)
 - 구체적 증설 일정/날짜 약속 금지
-- 계좌번호, 이메일 등 개인정보 직접 제공 금지 → 상담원 안내
 
 ${commonRules}`
 
@@ -218,7 +226,7 @@ function buildContextMessages(kbEntries, qnaEntries, history, language) {
   }
 
   if (parts.length > 0) {
-    parts.push('\n--- 위 참고 정보가 질문과 관련되면 이를 기반으로 답변하세요. 관련 없으면 DeepLink 서비스 지식으로 답변하되, 구체적 데이터를 지어내지 마세요. ---')
+    parts.push('\n--- ★ 위 자료에서 고객 질문에 해당하는 답변을 찾아 그 내용을 그대로 사용하세요. 말투만 상황에 맞게 조정하되, 의미와 정보는 바꾸지 마세요. 해당 자료가 없으면 "확인 후 안내드리겠습니다"로 답하세요. ---')
   }
 
   return parts.join('\n\n')
@@ -300,7 +308,7 @@ async function generateSuggestion(sessionId, userMessage, language, imageUrl, ti
   if (contextText) {
     llmMessages.push({
       role: 'system',
-      content: `Reference context (use this to answer the user's question):\n\n${contextText}`,
+      content: `=== 정답 자료 (이 내용에서 답을 찾아 사용하세요) ===\n\n${contextText}`,
     })
   }
 
@@ -328,7 +336,7 @@ async function generateSuggestion(sessionId, userMessage, language, imageUrl, ti
         role: 'system',
         content: hasStrongGuide
           ? `=== 참고 예시 (말투 참조용) ===\n\n${examples}`
-          : `=== 상담원 답변 예시 (이 말투와 길이를 따라하세요) ===\n\n${examples}`,
+          : `=== 상담원 실제 답변 (고객이 비슷한 질문을 하면 이 답변의 내용을 사용하세요) ===\n\n${examples}`,
       })
     }
   }
@@ -366,7 +374,7 @@ async function generateSuggestion(sessionId, userMessage, language, imageUrl, ti
       model: MODEL,
       messages: llmMessages,
       max_tokens: 200,
-      temperature: 0.3,
+      temperature: 0.15,
     }, { signal: controller.signal })
 
     const suggestion = completion.choices?.[0]?.message?.content?.trim()
