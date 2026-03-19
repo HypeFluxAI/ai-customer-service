@@ -66,6 +66,7 @@ Return ONLY a valid JSON array (no markdown, no explanation) with exactly ${docs
 [
   {
     "quality_score": <0-100 integer>,
+    "semantic_similarity": <0-100 integer>,
     "category": "<new_knowledge|correction|style_improvement|no_learn>",
     "should_learn": <true|false>,
     "reason": "<1 sentence in Korean>",
@@ -75,6 +76,15 @@ Return ONLY a valid JSON array (no markdown, no explanation) with exactly ${docs
   ...
 ]
 
+semantic_similarity (매우 중요 — 의미적 유사도):
+- AI 건의와 관리자 답변이 전달하는 의미/정보가 같은지 판단 (단어가 달라도 의미가 같으면 높은 점수)
+- 100: 완전히 같은 의미 (단어만 다름)
+- 80: 핵심 정보 일치, 부가 정보 약간 차이
+- 60: 방향은 맞지만 구체적 내용 차이
+- 40: 부분적으로만 일치
+- 20: 거의 다른 내용
+- 0: 완전히 다른 답변
+
 Categories:
 - new_knowledge: admin provided information the AI didn't know (score usually < 50)
 - correction: AI was wrong, admin corrected it (score usually < 30)
@@ -82,8 +92,8 @@ Categories:
 - no_learn: AI suggestion was good enough or admin reply is too generic/short to learn from
 
 Rules:
-- If admin reply is very short (< 15 chars) or just "네"/"감사합니다" → no_learn, score 70+
-- If both say essentially the same thing in different words → style_improvement or no_learn, score 60+
+- If admin reply is very short (< 15 chars) or just "네"/"감사합니다" → no_learn, score 70+, semantic_similarity 80+
+- If both say essentially the same thing in different words → style_improvement or no_learn, score 60+, semantic_similarity 70+
 - learned_content should be a clean, reusable answer (not conversation-specific)
 - Set learned_title and learned_content to null when should_learn is false`
         },
@@ -168,6 +178,10 @@ async function processQueue() {
         doc.qualityScore = result.quality_score
         doc.evaluationCategory = result.category
         doc.evaluationReason = result.reason
+        // LLM 语义相似度覆盖词匹配相似度（更准确）
+        if (result.semantic_similarity != null) {
+          doc.similarity = result.semantic_similarity
+        }
         doc.learnedTitle = result.learned_title || null
         doc.learnedContent = result.learned_content || null
         doc.evaluatedAt = new Date()

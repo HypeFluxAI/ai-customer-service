@@ -70,6 +70,11 @@ async function startWatcher() {
         if (!text.trim() || !sessionId) return
         if (recentlyProcessed.has(msgId)) return
 
+        // 跳过无意义消息（纯打招呼、单字符、表情等 — 不值得生成 AI 建议）
+        const trimmed = text.trim()
+        if (trimmed.length <= 3 && /^[ㄱ-ㅎㅋㅎㅠㅜ!?.~]+$/.test(trimmed)) return
+        if (/^(네|넵|넹|ㅇㅇ|ㅋ+|ㅎ+|ㅠ+|ㅜ+|감사합니다|감사해요|고마워요|알겠습니다|ok|ㄹ|확인|사진)$/i.test(trimmed)) return
+
         recentlyProcessed.add(msgId)
         if (recentlyProcessed.size > MAX_RECENT) {
           const first = recentlyProcessed.values().next().value
