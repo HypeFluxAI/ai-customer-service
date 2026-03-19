@@ -37,10 +37,25 @@ const QUICK_REPLIES = new Map([
   ['네 알겠습니다', '추가로 궁금한 점 있으시면 언제든지 말씀해주세요~'],
   ['네 감사합니다', '좋은 하루 되세요~'],
   ['알겠습니다', '추가로 궁금한 점 있으시면 언제든지 말씀해주세요~'],
-  // 계좌이체 (고빈도)
-  ['계좌이체', '3333290349818 카카오뱅크 (윤지후) 입금 후 입금자명 및 계정 아이디(로고아래 10자리) 알려주세요.'],
-  ['계좌이체요', '3333290349818 카카오뱅크 (윤지후) 입금 후 입금자명 및 계정 아이디(로고아래 10자리) 알려주세요.'],
+  // 계좌이체는 getQuickReply() 에서 DB 설정으로 처리
 ])
+
+// 转账关键词（匹配后从 DB 读取账号信息）
+const BANK_TRANSFER_KEYWORDS = ['계좌이체', '계좌이체요', '계좌이체하고싶어요', '계좌이체 하고 싶습니다']
+
+// 从 DB 读取的转账信息缓存
+let _bankTransferInfo = null
+async function getBankTransferReply() {
+  // 每次从 DB 读取最新配置（或用缓存）
+  if (!_bankTransferInfo) {
+    const { SiteSettings } = require('../models/Settings')
+    const setting = await SiteSettings.findOne({ key: 'bank_transfer_info' })
+    _bankTransferInfo = setting?.value || '3333290349818 카카오뱅크 보내주시면 됩니다. 입금 후 입금자명 및 계정 아이디(로고아래 10자리) 알려주세요.'
+    // 5分钟后清缓存，下次重新读
+    setTimeout(() => { _bankTransferInfo = null }, 5 * 60 * 1000)
+  }
+  return _bankTransferInfo
+}
 
 // 短消息 — 不值得生成建议，直接跳过
 const SKIP_PATTERNS = /^(네|넵|넹|ㅇㅇ|ㅋ+|ㅎ+|ㅠ+|ㅜ+|ok|ㄹ|확인|사진|네네|넵넵|\?)$/i
@@ -137,8 +152,12 @@ async function handleUserMessage(sessionId, userMessage, doc) {
   try {
     const trimmed = userMessage.trim()
 
-    // ★ 固定回复: 打招呼/感谢/计费 等高频短消息，直接返回管理员标准回复（不调 LLM）
-    const quickReply = QUICK_REPLIES.get(trimmed)
+    // ★ 固定回复: 打招呼/感谢 等高频短消息 + 转账信息从 DB 读取
+    let quickReply = QUICK_REPLIES.get(trimmed)
+    // 转账关键词 → 从 DB 读取最新账号
+    if (!quickReply && BANK_TRANSFER_KEYWORDS.includes(trimmed)) {
+      quickReply = await getBankTransferReply()
+    }
     if (quickReply) {
       console.log(`[AI Watcher] Quick reply for: "${trimmed}"`)
       const saved = await AiSuggestion.create({
