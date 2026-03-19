@@ -23,6 +23,28 @@ let isRunning = false
 const recentlyProcessed = new Set()
 const MAX_RECENT = 500
 
+// 短消息固定回复（不调 LLM，直接返回管理员常用回复）
+const QUICK_REPLIES = new Map([
+  // 打招呼
+  ['안녕하세요', '네 안녕하세요~ 어떤 부분 도움이 필요하신가요?'],
+  ['안녕하세여', '네 안녕하세요~ 어떤 부분 도움이 필요하신가요?'],
+  ['안녕하세용', '네 안녕하세요~ 어떤 부분 도움이 필요하신가요?'],
+  ['사장님', '네 안녕하세요~ 어떤 부분 도움이 필요하신가요?'],
+  // 감사/확인
+  ['네네 감사합니다', '좋은 하루 되세요~'],
+  ['감사합니다', '좋은 하루 되세요~ 추가 문의 있으시면 언제든 말씀해주세요!'],
+  ['답변감사합니다', '감사합니다! 더 궁금한 점 있으시면 언제든 문의해주세요~'],
+  ['네 알겠습니다', '추가로 궁금한 점 있으시면 언제든지 말씀해주세요~'],
+  ['네 감사합니다', '좋은 하루 되세요~'],
+  ['알겠습니다', '추가로 궁금한 점 있으시면 언제든지 말씀해주세요~'],
+  // 계좌이체 (고빈도)
+  ['계좌이체', '3333290349818 카카오뱅크 (윤지후) 입금 후 입금자명 및 계정 아이디(로고아래 10자리) 알려주세요.'],
+  ['계좌이체요', '3333290349818 카카오뱅크 (윤지후) 입금 후 입금자명 및 계정 아이디(로고아래 10자리) 알려주세요.'],
+])
+
+// 短消息 — 不值得生成建议，直接跳过
+const SKIP_PATTERNS = /^(네|넵|넹|ㅇㅇ|ㅋ+|ㅎ+|ㅠ+|ㅜ+|ok|ㄹ|확인|사진|네네|넵넵|\?)$/i
+
 // 去重 + 防抖: 同一 session 短时间内多条消息只生成一次建议
 const sessionDebounce = new Map() // sessionId → timeout
 const DEBOUNCE_MS = 3000 // 3 秒防抖
@@ -69,11 +91,7 @@ async function startWatcher() {
         // 跳过: 没文字、已处理、图片消息
         if (!text.trim() || !sessionId) return
         if (recentlyProcessed.has(msgId)) return
-
-        // 跳过无意义消息（纯打招呼、单字符、表情等 — 不值得生成 AI 建议）
         const trimmed = text.trim()
-        if (trimmed.length <= 3 && /^[ㄱ-ㅎㅋㅎㅠㅜ!?.~]+$/.test(trimmed)) return
-        if (/^(네|넵|넹|ㅇㅇ|ㅋ+|ㅎ+|ㅠ+|ㅜ+|감사합니다|감사해요|고마워요|알겠습니다|ok|ㄹ|확인|사진)$/i.test(trimmed)) return
 
         recentlyProcessed.add(msgId)
         if (recentlyProcessed.size > MAX_RECENT) {
@@ -117,6 +135,26 @@ async function startWatcher() {
 
 async function handleUserMessage(sessionId, userMessage, doc) {
   try {
+    const trimmed = userMessage.trim()
+
+    // ★ 固定回复: 打招呼/感谢/计费 等高频短消息，直接返回管理员标准回复（不调 LLM）
+    const quickReply = QUICK_REPLIES.get(trimmed)
+    if (quickReply) {
+      console.log(`[AI Watcher] Quick reply for: "${trimmed}"`)
+      const saved = await AiSuggestion.create({
+        sessionId, userMessageId: doc._id, userMessage: trimmed,
+        suggestion: quickReply, language: 'ko', createdAt: new Date(),
+      })
+      try {
+        const { broadcastToAdmins } = require('../realtime/chatRealtime')
+        broadcastToAdmins({ type: 'ai_suggestion', sessionId, suggestion: quickReply, messageId: doc._id.toString(), suggestionId: saved._id.toString() })
+      } catch {}
+      return
+    }
+
+    // ★ 跳过无意义消息（"네"、"ㅋ"、"?" 等）
+    if (SKIP_PATTERNS.test(trimmed)) return
+
     // 检查是否已经有未处理的建议（原系统可能也生成了）
     const existing = await AiSuggestion.findOne({
       sessionId,
@@ -124,10 +162,7 @@ async function handleUserMessage(sessionId, userMessage, doc) {
       createdAt: { $gte: new Date(Date.now() - 30000) }, // 30 秒内
     })
 
-    if (existing) {
-      // 原系统已经生成了建议，跳过
-      return
-    }
+    if (existing) return
 
     // 获取 session 语言
     const session = await ChatSession.findById(sessionId).lean()
