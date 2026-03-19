@@ -90,7 +90,9 @@ const { initEmbeddingService } = require('./services/embedding')
 const { initAdminReplyCache } = require('./services/adminReplyCache')
 const { initAdminStyleProfile } = require('./services/adminStyleProfile')
 const { initOperationalContext } = require('./services/operationalContext')
-const { initKbLifecycle } = require('./services/kbLifecycle')
+const { startKBLifecycle } = require('./services/kbLifecycle')
+const { startEvaluationService } = require('./services/evaluateQuality')
+const { startAutoLearn } = require('./services/autoLearn')
 const { startWatcher: startAiWatcher } = require('./services/aiSuggestWatcher')
 
 // ── MongoDB + Start ─────────────────────────────────────────
@@ -131,10 +133,18 @@ mongoose.connect(MONGO_URI)
     }
 
     try {
-      initKbLifecycle()
+      startKBLifecycle()
       console.log('[KbLifecycle] Initialized')
     } catch (e) {
       console.warn('[KbLifecycle] Init warning:', e.message)
+    }
+
+    // 启动 AI 质量评估 + 自动学习
+    try {
+      startEvaluationService()
+      startAutoLearn()
+    } catch (e) {
+      console.warn('[EvalQuality/AutoLearn] Init warning:', e.message)
     }
 
     // 启动 AI 建议自动生成（监听新消息）

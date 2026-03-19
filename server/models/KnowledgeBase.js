@@ -13,6 +13,7 @@ const KnowledgeBaseSchema = new mongoose.Schema({
     lastReferencedAt: { type: Date, default: null },
     reviewStatus: { type: String, enum: ['active', 'flagged', 'archived'], default: 'active' },
     sourceEvaluationId: { type: mongoose.Schema.Types.ObjectId, ref: 'AiSuggestion', default: null },
+    expiresAt: { type: Date, default: null }, // 时间敏感内容自动过期
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now }
 })

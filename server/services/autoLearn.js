@@ -131,6 +131,11 @@ async function processEvaluatedItem(doc, result) {
             return;
         }
 
+        // 时间敏感内容自动设置 30 天过期
+        const combined = title + ' ' + content;
+        const isTemporal = /다음 주|담주|이번 주|금주|[0-9]+월.*말|증설.*예정|출시.*예정|곧|조만간/.test(combined);
+        const expiresAt = isTemporal ? new Date(Date.now() + 30 * 86400000) : null;
+
         const kbEntry = await KnowledgeBase.create({
             language,
             title,
@@ -140,6 +145,7 @@ async function processEvaluatedItem(doc, result) {
             isActive: true,
             confidence: calcConfidence(result),
             sourceEvaluationId: doc._id,
+            expiresAt,
         });
 
         doc.autoLearnStatus = 'created_kb';
