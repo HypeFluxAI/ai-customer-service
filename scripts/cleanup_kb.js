@@ -3,6 +3,8 @@
  * KB 清理脚本 — 归档重复/过时/低质量条目
  * 用法: MONGO_URI=mongodb://... node scripts/cleanup_kb.js [--dry-run]
  */
+const path = require('path');
+try { require('dotenv').config({ path: path.resolve(__dirname, '../.env') }); } catch(e) {}
 const mongoose = require('mongoose');
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://122.99.183.50:31017/deeplinkgame';
 const DRY_RUN = process.argv.includes('--dry-run');
