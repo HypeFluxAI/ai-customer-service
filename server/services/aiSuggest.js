@@ -283,7 +283,8 @@ async function generateSuggestion(sessionId, userMessage, language, imageUrl, ti
   const lang = resolveLanguage(language)
 
   // ★ 直接匹配: 管理员对同样的问题回复过，直接复用（不走 LLM）
-  if (userMessage && adminReplyCache.isReady()) {
+  // 短消息（<15字符）跳过直接匹配——可能是跟进消息，需要上下文
+  if (userMessage && userMessage.trim().length >= 15 && adminReplyCache.isReady()) {
     const directMatch = adminReplyCache.findDirectMatch(userMessage)
     if (directMatch && directMatch.confidence >= 0.85) {
       console.log(`[AI Suggest] Direct match (confidence=${directMatch.confidence.toFixed(2)}): "${userMessage.substring(0, 30)}..."`)
@@ -297,9 +298,24 @@ async function generateSuggestion(sessionId, userMessage, language, imageUrl, ti
     ChatMessage.find({ sessionId }).sort({ timestamp: -1 }).limit(20).lean(),
   ])
 
+  // ★ 短消息/跟进消息：用上文拼接作为搜索查询
+  let searchQuery = userMessage || ''
+  const isFollowUp = searchQuery.trim().length < 15
+  if (isFollowUp && recentMessages.length > 0) {
+    // 取最近 2-3 条用户消息拼接
+    const recentUserMsgs = recentMessages
+      .filter(m => m.sender === 'user' && m.text && m.text.trim().length > 5)
+      .slice(0, 3)
+      .map(m => m.text.trim())
+      .reverse()
+    if (recentUserMsgs.length > 0) {
+      searchQuery = recentUserMsgs.join(' ') + ' ' + searchQuery
+    }
+  }
+
   let interpretedQuestion = null
   if (embedding.isReady()) {
-    const searchResult = await embedding.semanticSearch(userMessage || '', lang, 5, 5)
+    const searchResult = await embedding.semanticSearch(searchQuery, lang, 5, 5)
     kbEntries = searchResult.kbResults
     qnaEntries = searchResult.qnaResults
     interpretedQuestion = searchResult.interpretedQuestion
