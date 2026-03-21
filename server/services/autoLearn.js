@@ -117,9 +117,10 @@ async function processEvaluatedItem(doc, result) {
             return;
         }
 
+        // 标题用 LLM 总结的标准化问题，答案永远用客服原文（不用 LLM 改写）
         const title = result.learned_title || (doc.userMessage || '').substring(0, 100) || 'Untitled';
-        const content = result.learned_content || doc.adminReply;
-        const keywords = extractKeywords(doc.userMessage);
+        const content = doc.adminReply;  // ★ 直接用客服原文，不用 learned_content
+        const keywords = extractKeywords((doc.userMessage || '') + ' ' + (result.learned_title || ''));
         const language = doc.language || 'ko';
 
         // Dedup check
