@@ -6,7 +6,11 @@
 const path = require('path');
 try { require('dotenv').config({ path: path.resolve(__dirname, '../.env') }); } catch(e) {}
 const mongoose = require('mongoose');
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://122.99.183.50:31017/deeplinkgame';
+let MONGO_URI = process.env.MONGO_URI || 'mongodb://122.99.183.50:31017/deeplinkgame';
+// 外部连接需要 directConnection 避免 replica set 解析
+if (MONGO_URI.indexOf('svc.cluster.local') < 0 && MONGO_URI.indexOf('directConnection') < 0) {
+  MONGO_URI += (MONGO_URI.indexOf('?') >= 0 ? '&' : '?') + 'directConnection=true';
+}
 const DRY_RUN = process.argv.includes('--dry-run');
 
 const KBSchema = new mongoose.Schema({}, { strict: false, collection: 'knowledge_base' });
