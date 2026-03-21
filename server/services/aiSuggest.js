@@ -297,10 +297,12 @@ async function generateSuggestion(sessionId, userMessage, language, imageUrl, ti
     ChatMessage.find({ sessionId }).sort({ timestamp: -1 }).limit(20).lean(),
   ])
 
+  let interpretedQuestion = null
   if (embedding.isReady()) {
-    const { kbResults, qnaResults } = await embedding.semanticSearch(userMessage || '', lang, 5, 5)
-    kbEntries = kbResults
-    qnaEntries = qnaResults
+    const searchResult = await embedding.semanticSearch(userMessage || '', lang, 5, 5)
+    kbEntries = searchResult.kbResults
+    qnaEntries = searchResult.qnaResults
+    interpretedQuestion = searchResult.interpretedQuestion
   } else {
     ;[kbEntries, qnaEntries] = await Promise.all([
       findRelevantKnowledge(userMessage || '', lang),
@@ -316,9 +318,13 @@ async function generateSuggestion(sessionId, userMessage, language, imageUrl, ti
   ]
 
   if (contextText) {
+    let contextHeader = '=== 정답 자료 (이 내용에서 답을 찾아 사용하세요) ==='
+    if (interpretedQuestion) {
+      contextHeader += `\n\n고객 의도 분석: "${interpretedQuestion}" — 이 질문에 해당하는 답변을 아래에서 찾아 사용하세요.`
+    }
     llmMessages.push({
       role: 'system',
-      content: `=== 정답 자료 (이 내용에서 답을 찾아 사용하세요) ===\n\n${contextText}`,
+      content: `${contextHeader}\n\n${contextText}`,
     })
   }
 

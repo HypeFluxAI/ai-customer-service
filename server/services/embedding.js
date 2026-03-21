@@ -92,13 +92,14 @@ function expandAbbreviations(text) {
 }
 
 /**
- * Use LLM to expand user query into search keywords (async, with timeout)
+ * LLM 语义理解: 把用户消息转成标准化问题 + 搜索关键词
+ * 例: "돈 어떻게 넣어요?" → { question: "포인트 충전/계좌이체 방법", keywords: "충전 계좌이체 포인트 결제" }
  */
-async function expandQueryWithLLM(userMessage, language) {
+async function interpretWithLLM(userMessage, language) {
   if (!client || !userMessage || userMessage.length < 3) return null
 
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 5000) // 5s timeout
+  const timeout = setTimeout(() => controller.abort(), 5000)
 
   try {
     const res = await client.chat.completions.create({
@@ -106,22 +107,36 @@ async function expandQueryWithLLM(userMessage, language) {
       messages: [
         {
           role: 'system',
-          content: `You are a search query expander for DeepLink (remote PC bang GPU rental platform).
-Given a user's chat message, output ONLY a list of Korean search keywords (space-separated) that would help find relevant knowledge base articles.
-Rules:
-- Expand abbreviations: 린클→리니지 클래식, 던파→던전앤파이터, 2클→2클라이언트, 피방→PC방
-- Add related concepts: if asking about price, add 요금 포인트 충전; if about games, add PC방 혜택
-- Include the original words too
-- Output ONLY keywords, no explanation, no punctuation
-- Maximum 15 keywords`
+          content: `DeepLink(원격 PC방 GPU 임대 플랫폼) 고객 문의를 분석합니다.
+
+고객 메시지를 보고 다음 JSON을 출력하세요 (JSON만, 설명 없이):
+{"question": "표준화된 질문 (예: 포인트 충전 방법)", "keywords": "검색 키워드 (공백 구분, 최대 15개)"}
+
+규칙:
+- question: 고객이 실제로 알고 싶은 것을 명확한 한국어 질문으로
+- keywords: 약어 풀어쓰기 (린클→리니지 클래식, 피방→PC방), 관련 개념 추가
+- 예시:
+  "돈 어떻게 넣어요?" → {"question":"포인트 충전/계좌이체 방법","keywords":"충전 계좌이체 포인트 결제 카드 입금"}
+  "린클 되나요?" → {"question":"리니지 클래식 이용 가능 여부","keywords":"리니지 클래식 가능 이용 PC방 혜택 임대"}`
         },
         { role: 'user', content: userMessage }
       ],
-      max_tokens: 100,
+      max_tokens: 150,
       temperature: 0,
     }, { signal: controller.signal })
 
-    return res.choices?.[0]?.message?.content?.trim() || null
+    const raw = res.choices?.[0]?.message?.content?.trim()
+    if (!raw) return null
+    try {
+      const parsed = JSON.parse(raw.replace(/^```json?\s*/, '').replace(/\s*```$/, ''))
+      return {
+        question: parsed.question || null,
+        keywords: parsed.keywords || null,
+      }
+    } catch {
+      // JSON 파싱 실패 시 keywords만 추출
+      return { question: null, keywords: raw }
+    }
   } catch {
     return null
   } finally {
@@ -208,27 +223,44 @@ async function initEmbeddings() {
 }
 
 /**
- * Combined semantic search: local abbreviation expansion + LLM query expansion + scoring
+ * Combined semantic search: LLM 意图理解 + 标准化问题匹配 + 关键词匹配
  */
 async function semanticSearch(messageText, language, kbTopK = 5, qnaTopK = 5) {
-  if (!initialized || !messageText) return { kbResults: [], qnaResults: [] }
+  if (!initialized || !messageText) return { kbResults: [], qnaResults: [], interpretedQuestion: null }
 
   // Step 1: Local abbreviation expansion (instant)
   const localExpanded = expandAbbreviations(messageText)
 
-  // Step 2: LLM query expansion (async, 3s timeout, non-blocking)
-  const llmExpanded = await expandQueryWithLLM(messageText, language)
+  // Step 2: LLM 语义理解 → 标准化问题 + 关键词
+  const interpretation = await interpretWithLLM(messageText, language)
+  const llmQuestion = interpretation?.question || null
+  const llmKeywords = interpretation?.keywords || null
 
   // Combine all search terms
-  const allTerms = normalizeText(localExpanded + ' ' + (llmExpanded || ''))
+  const allTerms = normalizeText(localExpanded + ' ' + (llmKeywords || '') + ' ' + (llmQuestion || ''))
   const searchWords = [...new Set(allTerms.split(/\s+/).filter(w => w.length >= 2))]
 
   if (searchWords.length === 0) return { kbResults: [], qnaResults: [] }
 
   // Step 3: Score and rank KB entries (filter by language)
+  // 标准化问题 vs KB 标题的语义匹配（额外加分）
+  const questionWords = llmQuestion
+    ? [...new Set(normalizeText(llmQuestion).split(/\s+/).filter(w => w.length >= 2))]
+    : []
+
   const langKb = kbCache.filter(e => e.language === language)
   const kbScored = langKb
-    .map(e => ({ entry: e, score: scoreKBEntry(e, searchWords) }))
+    .map(e => {
+      let score = scoreKBEntry(e, searchWords)
+      // LLM 标准化问题与 KB 标题的匹配加分
+      if (questionWords.length > 0) {
+        const title = normalizeText(e.title)
+        for (const qw of questionWords) {
+          if (qw.length >= 2 && title.includes(qw)) score += 3
+        }
+      }
+      return { entry: e, score }
+    })
     .filter(e => e.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, kbTopK)
@@ -262,7 +294,7 @@ async function semanticSearch(messageText, language, kbTopK = 5, qnaTopK = 5) {
     score: r.score,
   }))
 
-  return { kbResults, qnaResults }
+  return { kbResults, qnaResults, interpretedQuestion: llmQuestion }
 }
 
 /**
