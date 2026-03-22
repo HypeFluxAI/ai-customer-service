@@ -326,6 +326,16 @@ async function generateSuggestion(sessionId, userMessage, language, imageUrl, ti
     ])
   }
 
+  // ★ 意图匹配：LLM 理解了用户意图后，用意图去匹配管理员标准回复
+  // 解决"리니지 되나요？"（太短无法直接匹配）但意图="리니지 클래식 이용 가능 여부"（能匹配）
+  if (interpretedQuestion && adminReplyCache.isReady()) {
+    const intentMatch = adminReplyCache.findDirectMatch(interpretedQuestion)
+    if (intentMatch && intentMatch.confidence >= 0.8) {
+      console.log(`[AI Suggest] Intent match: "${interpretedQuestion}" → confidence=${intentMatch.confidence.toFixed(2)}`)
+      return intentMatch.reply
+    }
+  }
+
   const contextText = buildContextMessages(kbEntries, qnaEntries, recentMessages, lang)
 
   // Build messages array
