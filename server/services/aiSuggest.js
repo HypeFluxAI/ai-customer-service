@@ -326,13 +326,30 @@ async function generateSuggestion(sessionId, userMessage, language, imageUrl, ti
     ])
   }
 
-  // ★ 意图匹配：LLM 理解了用户意图后，用意图去匹配管理员标准回复
-  // 解决"리니지 되나요？"（太短无法直接匹配）但意图="리니지 클래식 이용 가능 여부"（能匹配）
-  if (interpretedQuestion && adminReplyCache.isReady()) {
-    const intentMatch = adminReplyCache.findDirectMatch(interpretedQuestion)
-    if (intentMatch && intentMatch.confidence >= 0.8) {
-      console.log(`[AI Suggest] Intent match: "${interpretedQuestion}" → confidence=${intentMatch.confidence.toFixed(2)}`)
-      return intentMatch.reply
+  // ★ 意图匹配：LLM 解释的意图 vs KB 标题 关键词重叠度
+  // "리니지 클래식 이용 가능 여부" vs KB标题 "신규 가입/리니지 클래식 가능 여부" → 高重叠
+  if (interpretedQuestion && kbEntries && kbEntries.length > 0) {
+    const intentWords = new Set(normalizeText(interpretedQuestion).split(/\s+/).filter(w => w.length >= 2))
+    if (intentWords.size >= 2) {
+      for (const kb of kbEntries.slice(0, 3)) {
+        const titleWords = new Set(normalizeText(kb.title || '').split(/\s+/).filter(w => w.length >= 2))
+        if (titleWords.size === 0) continue
+        // 计算意图关键词在 KB 标题中的命中率
+        let hits = 0
+        for (const w of intentWords) {
+          for (const tw of titleWords) {
+            if (w === tw || (w.length >= 3 && tw.length >= 3 && (w.includes(tw) || tw.includes(w)))) { hits++; break }
+          }
+        }
+        const coverage = hits / intentWords.size
+        if (coverage >= 0.5) {  // 意图关键词至少50%命中 KB 标题
+          const answer = cleanHtml(kb.contentHtml).trim()
+          if (answer.length >= 10) {
+            console.log(`[AI Suggest] Intent→KB match (coverage=${(coverage*100).toFixed(0)}%): "${interpretedQuestion}" → "${(kb.title || '').substring(0, 40)}"`)
+            return answer
+          }
+        }
+      }
     }
   }
 
