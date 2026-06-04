@@ -27,7 +27,8 @@ class Engine:
 
     def __init__(self, config: dict, api_key: str):
         self.config = config
-        self.client = anthropic.Anthropic(api_key=api_key)
+        # [2026-06-04] Vision+回复都走生产端, 本地 Anthropic client 已不用; 无 key 时为 None
+        self.client = anthropic.Anthropic(api_key=api_key) if api_key else None
         self.state = StateManager()
 
         # 子模块初始化
