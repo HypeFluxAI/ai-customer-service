@@ -20,7 +20,7 @@ logger = logging.getLogger("ai_cs.response.generator")
 #   生产环境建议改成走 HTTPS 反代域名而非直连 IP:3001。
 AI_BACKEND_URL = os.environ.get(
     "PRODUCTION_AI_URL",
-    "http://3.38.65.100:3001/api/kakao/desktop-reply",
+    "https://deeplinkgame.com/aiapi/kakao/desktop-reply",
 )
 AI_BACKEND_SECRET = os.environ.get("DESKTOP_REPLY_SECRET", "deeplink-desktop-kakao-2026")
 AI_BACKEND_TIMEOUT = float(os.environ.get("PRODUCTION_AI_TIMEOUT", "15"))
