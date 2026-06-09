@@ -22,11 +22,23 @@ if (!fs.existsSync(UPLOAD_DIR)) {
     fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
 
+// Strict image whitelist (2026-06 hardening): validate BOTH the (spoofable) mimetype AND the
+// original extension, and ALWAYS store with a safe extension derived from the mimetype — never
+// trust the client-supplied extension. This is how .php/.jsp/.html shell-probe uploads slipped
+// through before (a .php sent with Content-Type: image/png passed the old mimetype-only filter).
+const ALLOWED_IMAGE = {
+    'image/png': '.png',
+    'image/jpeg': '.jpg',
+    'image/jpg': '.jpg',
+    'image/gif': '.gif',
+    'image/webp': '.webp',
+};
+
 const storage = multer.diskStorage({
     destination: (req, file, cb) => cb(null, UPLOAD_DIR),
     filename: (req, file, cb) => {
-        const ext = path.extname(file.originalname) || '.jpg';
-        cb(null, `${Date.now()}_${crypto.randomBytes(4).toString('hex')}${ext}`);
+        const safeExt = ALLOWED_IMAGE[file.mimetype] || '.png';
+        cb(null, `${Date.now()}_${crypto.randomBytes(4).toString('hex')}${safeExt}`);
     }
 });
 
@@ -34,10 +46,12 @@ const upload = multer({
     storage,
     limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
     fileFilter: (req, file, cb) => {
-        if (file.mimetype.startsWith('image/')) {
+        const extOk = /\.(png|jpe?g|gif|webp)$/i.test(file.originalname || '');
+        const mimeOk = Object.prototype.hasOwnProperty.call(ALLOWED_IMAGE, file.mimetype);
+        if (mimeOk && extOk) {
             cb(null, true);
         } else {
-            cb(new Error('Only image files are allowed'));
+            cb(new Error('Only image files (png/jpg/gif/webp) are allowed'));
         }
     }
 });
@@ -525,6 +539,10 @@ router.use((err, req, res, next) => {
         if (err.code === 'LIMIT_FILE_SIZE') {
             return res.status(400).json({ success: false, error: 'File too large (max 5MB)' });
         }
+        return res.status(400).json({ success: false, error: err.message });
+    }
+    // fileFilter rejection (non-image upload) — return a clean 400 instead of a generic 500
+    if (err && /Only image files/.test(err.message || '')) {
         return res.status(400).json({ success: false, error: err.message });
     }
     next(err);
